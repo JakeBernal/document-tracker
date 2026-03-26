@@ -8,7 +8,7 @@ import Howitworks from '../components/howitworks';
 export default function home() {
   return (
      <>  
-      <Navbar />
+     
       <Hero />
       <Services />
       <Howitworks />

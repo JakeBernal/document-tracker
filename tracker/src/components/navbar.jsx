@@ -1,8 +1,6 @@
 
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faUser } from '@fortawesome/free-solid-svg-icons'
-
 export default function navbar() {
+  
   return (
   <nav className="navbar">
     <div className="logo">
@@ -19,7 +17,7 @@ export default function navbar() {
     </ul>
    </div>
   <div className="nav-actions">
-    <button className="userbtn">Sign in</button>
+    <button>Sign in</button>
   </div>
 </nav>
   )

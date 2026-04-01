@@ -44,7 +44,7 @@ body {
   list-style: none;
 }
 li:hover{
-  border-bottom: #1E3A8A solid 1px;
+  border-bottom: #1E3A8A solid 1.5px;
 }
 
 .nav-txt{
@@ -188,6 +188,7 @@ li:hover{
   color: white;
   padding: 40px;
   text-align: center;
+  font-family: 'Poppins', sans-serif;
 }
 
 .steps {
@@ -232,3 +233,4 @@ li:hover{
   flex: 1;
   padding: 20px;
 }
+

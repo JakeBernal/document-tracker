@@ -1,0 +1,95 @@
+.login-container {
+  min-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* top tabs */
+.tabs {
+  display: flex;
+  gap: 40px;
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+
+.tabs span {
+  color: #999;
+  cursor: pointer;
+}
+
+.tabs .active {
+  color: black;
+}
+
+/* form */
+.form {
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+}
+
+.form label {
+  margin: 10px 0 5px;
+  font-size: 14px;
+}
+
+.form input {
+  padding: 12px;
+  border-radius: 10px;
+  border: 2px solid #333;
+  outline: none;
+  font-size: 14px;
+}
+
+/* forgot password */
+.forgot {
+  text-align: right;
+  font-size: 13px;
+  color: #777;
+  margin-top: 8px;
+  cursor: pointer;
+}
+
+/* sign in button */
+.signin-btn {
+  margin-top: 20px;
+  padding: 14px;
+  border: none;
+  border-radius: 8px;
+  background: #2d448f;
+  color: white;
+  font-weight: bold;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.signin-btn:hover {
+  background: #243874;
+}
+
+/* divider */
+.divider {
+  text-align: center;
+  margin: 20px 0;
+  color: #777;
+}
+
+/* google button */
+.google-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.google-btn img {
+  width: 20px;
+}

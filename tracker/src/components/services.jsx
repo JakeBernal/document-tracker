@@ -27,7 +27,7 @@ export default function services() {
   ];
  
   return (
-   <section className='services'>
+   <section className='services' id='services'>
     <h2>Services</h2> 
       <div className="card-container">
         {services.map((service, index)=> (

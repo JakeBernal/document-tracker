@@ -1,6 +1,20 @@
 
+import { useNavigate } from "react-router-dom";
+
+
+
 export default function navbar() {
+  const navigate = useNavigate();
   
+
+  const scrollToSection = (id) => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth" }); // smooth scrolling
+    }
+  };
+
+
   return (
   <nav className="navbar">
     <div className="logo">
@@ -10,14 +24,14 @@ export default function navbar() {
    </div>
    <div className="nav-txt">
     <ul>
-     <li>Home</li>
-     <li>Services</li>
+     <li onClick={() => navigate("/")}>Home </li>
+     <li onClick={() => scrollToSection("services")}>Services</li>
      <li>About</li>
      <li>Contact</li>
     </ul>
    </div>
   <div className="nav-actions">
-    <button>Sign in</button>
+      <button className="btn-signin" onClick={() => navigate("/signin")}>Sign In</button>
   </div>
 </nav>
   )

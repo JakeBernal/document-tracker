@@ -22,15 +22,17 @@ body {
   justify-content: space-between;
   padding: 15px 70px;
   cursor: pointer;
+  background-color: #1E3A8A;
 }
 
 .logo {
-  font-weight: bold;
+  font-weight:500;
   font-size: 11px;
   display: flex;
   align-items: center;
   gap: 5px;
   font-family: Arial;
+  color: #f5f7fb;
 }
 
 .img {
@@ -44,11 +46,12 @@ body {
   list-style: none;
 }
 li:hover{
-  border-bottom: #1E3A8A solid 1.5px;
+  border-bottom: #b5bbcb solid 1.5px;
 }
 
 .nav-txt{
   font-family: 'Roboto', sans-serif;
+  color: #f5f7fb;
  
 }
 
@@ -57,7 +60,7 @@ li:hover{
   font-family: 'roboto';
 }
 li:hover{
-  color: #1E3A8A;
+  color: #bfbdcdcd;
 }
 
 

@@ -1,6 +1,8 @@
 import React from 'react'
-
+import { useNavigate } from 'react-router-dom'
 export default function hero() {
+
+  const navigate = useNavigate();
   return (
     <section className="hero">
       <h1>Document Tracking System</h1>
@@ -9,8 +11,8 @@ export default function hero() {
         Fast, transparent, and accessible for all residents.
       </p>
       <div className="hero-buttons">
-        <button className="primary">Track Document</button>
-        <button className="secondary">Request Document</button>
+        <button onClick={() => navigate("/signin")} className="primary" >Track Document</button>
+        <button onClick={() => navigate("/signin")} className="secondary">Request Document</button>
       </div>
     </section>
   )

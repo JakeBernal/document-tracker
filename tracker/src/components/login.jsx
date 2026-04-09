@@ -18,7 +18,7 @@ export default function Login() {
 
   <div className="tabs">
     <span className="active">Login</span>
-    <span onClick={() => navigate("/register")}>Register</span>
+    <span onClick={() => navigate("/signup")}>Register</span>
   </div>
 
   <div className="form">

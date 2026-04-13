@@ -15,12 +15,7 @@ app.use((req, res, next) => {
 });
 
 // CORS
-app.use(cors({
-  origin: "http://localhost:5173",
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  credentials: true
-}));
-
+app.use(cors());
 app.use(express.json());
 
 /* ================= AUTH ROUTES ================= */

@@ -1,31 +1,48 @@
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
-const db = require("./db");
-const requestRoutes = require('./routes/requestRoutes');
+const db = require("./config/db");
+
+const requestRoutes = require("./routes/requestRoutes");
 
 const app = express();
 
-app.use(cors());
-app.use(express.json());
-app.use('/api', requestRoutes);
+/* ================= MIDDLEWARE ================= */
 
-/* ================= AUTH ================= */
+app.use((req, res, next) => {
+  console.log("🔥 HIT:", req.method, req.url);
+  next();
+});
+
+// CORS
+app.use(cors({
+  origin: "http://localhost:5173",
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}));
+
+app.use(express.json());
+
+/* ================= AUTH ROUTES ================= */
 
 // REGISTER
 app.post("/api/register", async (req, res) => {
   const { full_name, email, password } = req.body;
 
-  const hashed = await bcrypt.hash(password, 10);
+  try {
+    const hashed = await bcrypt.hash(password, 10);
 
-  db.query(
-    "INSERT INTO users (full_name, email, password) VALUES (?, ?, ?)",
-    [full_name, email, hashed],
-    (err, result) => {
-      if (err) return res.status(500).json(err);
-      res.json({ message: "User registered!" });
-    }
-  );
+    db.query(
+      "INSERT INTO users (full_name, email, password) VALUES (?, ?, ?)",
+      [full_name, email, hashed],
+      (err) => {
+        if (err) return res.status(500).json(err);
+        res.json({ message: "User registered successfully" });
+      }
+    );
+  } catch (err) {
+    res.status(500).json({ message: "Server error", err });
+  }
 });
 
 // LOGIN
@@ -41,7 +58,6 @@ app.post("/api/login", (req, res) => {
         return res.status(401).json({ message: "User not found" });
 
       const user = results[0];
-
       const match = await bcrypt.compare(password, user.password);
 
       if (!match)
@@ -52,35 +68,11 @@ app.post("/api/login", (req, res) => {
   );
 });
 
-/* ================= DOCUMENTS ================= */
+/* ================= REQUEST ROUTES ================= */
 
-// CREATE REQUEST
-app.post("/api/request", (req, res) => {
-  const { user_id, document_type } = req.body;
+app.use("/api", requestRoutes);
 
-  db.query(
-    "INSERT INTO requests (user_id, document_type) VALUES (?, ?)",
-    [user_id, document_type],
-    (err, result) => {
-      if (err) return res.status(500).json(err);
-      res.json({ message: "Request submitted!" });
-    }
-  );
-});
-
-// GET USER REQUESTS
-app.get("/api/requests/:user_id", (req, res) => {
-  const user_id = req.params.user_id;
-
-  db.query(
-    "SELECT * FROM requests WHERE user_id = ?",
-    [user_id],
-    (err, results) => {
-      if (err) return res.status(500).json(err);
-      res.json(results);
-    }
-  );
-});
+/* ================= START SERVER ================= */
 
 app.listen(5000, () => {
   console.log("Server running on port 5000");

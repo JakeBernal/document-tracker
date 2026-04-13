@@ -1,42 +1,29 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 
-// Controllers
 const {
   createRequest,
   getMyRequests,
   getRequestById,
   updateStatus,
   uploadFile
-} = require('../controllers/requestController');
+} = require("../controllers/requestController");
 
-// Upload middleware
-const upload = require('../middleware/upload');
+const upload = require("../middleware/upload");
 
+// CREATE REQUEST
+router.post("/requests", createRequest);
 
-// =========================
-// 👤 CITIZEN ROUTES
-// =========================
+// GET USER REQUESTS
+router.get("/requests/my/:user_id", getMyRequests);
 
-// Create new request
-router.post('/requests', createRequest);
+// GET SINGLE REQUEST
+router.get("/requests/:id", getRequestById);
 
-// Get all requests of a user
-router.get('/requests/my/:user_id', getMyRequests);
+// UPLOAD FILE
+router.post("/upload", upload.single("file"), uploadFile);
 
-// Get single request
-router.get('/requests/:id', getRequestById);
-
-// Upload file (linked to request)
-router.post('/upload', upload.single('file'), uploadFile);
-
-
-// =========================
-// 🧑‍💼 ADMIN ROUTES
-// =========================
-
-// Update request status
-router.put('/requests/:id/status', updateStatus);
-
+// UPDATE STATUS (ADMIN)
+router.put("/requests/:id/status", updateStatus);
 
 module.exports = router;

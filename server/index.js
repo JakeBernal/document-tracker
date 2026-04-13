@@ -6,8 +6,19 @@ const db = require("./config/db");
 const requestRoutes = require("./routes/requestRoutes");
 
 const app = express();
+const PORT = 5001;
 
 /* ================= MIDDLEWARE ================= */
+
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
+  })
+);
+
+app.use(express.json());
 
 app.use((req, res, next) => {
   console.log("🔥 HIT:", req.method, req.url);
@@ -15,14 +26,25 @@ app.use((req, res, next) => {
 });
 
 // CORS
-app.use(cors());
+app.use(cors({
+  origin: "http://localhost:5173",
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}));
+
 app.use(express.json());
 
 /* ================= AUTH ROUTES ================= */
 
 // REGISTER
 app.post("/api/register", async (req, res) => {
+  console.log("REGISTER BODY:", req.body);
+
   const { full_name, email, password } = req.body;
+
+  if (!full_name || !email || !password) {
+    return res.status(400).json({ message: "Please fill in all fields" });
+  }
 
   try {
     const hashed = await bcrypt.hash(password, 10);
@@ -30,45 +52,89 @@ app.post("/api/register", async (req, res) => {
     db.query(
       "INSERT INTO users (full_name, email, password) VALUES (?, ?, ?)",
       [full_name, email, hashed],
-      (err) => {
-        if (err) return res.status(500).json(err);
-        res.json({ message: "User registered successfully" });
+      (err, result) => {
+        if (err) {
+          console.log("REGISTER ERROR:", err);
+
+          if (err.code === "ER_DUP_ENTRY") {
+            return res.status(400).json({ message: "Email already exists" });
+          }
+
+          return res.status(500).json({ message: "Database error" });
+        }
+
+        return res.status(201).json({
+          message: "User registered successfully",
+          userId: result.insertId,
+        });
       }
     );
   } catch (err) {
-    res.status(500).json({ message: "Server error", err });
+    console.log("SERVER ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
 // LOGIN
 app.post("/api/login", (req, res) => {
+  console.log("LOGIN BODY:", req.body);
+
   const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ message: "Email and password are required" });
+  }
 
   db.query(
     "SELECT * FROM users WHERE email = ?",
     [email],
     async (err, results) => {
-      if (err) return res.status(500).json(err);
-      if (results.length === 0)
+      if (err) {
+        console.log("LOGIN ERROR:", err);
+        return res.status(500).json({ message: "Database error" });
+      }
+
+      if (results.length === 0) {
         return res.status(401).json({ message: "User not found" });
+      }
 
-      const user = results[0];
-      const match = await bcrypt.compare(password, user.password);
+      try {
+        const user = results[0];
+        const match = await bcrypt.compare(password, user.password);
 
-      if (!match)
-        return res.status(401).json({ message: "Wrong password" });
+        if (!match) {
+          return res.status(401).json({ message: "Wrong password" });
+        }
 
-      res.json({ message: "Login success", user });
+        return res.status(200).json({
+          message: "Login success",
+          user: {
+            id: user.id,
+            full_name: user.full_name,
+            email: user.email,
+            role: user.role,
+          },
+        });
+      } catch (compareErr) {
+        console.log("BCRYPT COMPARE ERROR:", compareErr);
+        return res.status(500).json({ message: "Server error" });
+      }
     }
   );
 });
 
-/* ================= REQUEST ROUTES ================= */
+/* ================= OTHER ROUTES ================= */
 
 app.use("/api", requestRoutes);
 
+/* ================= 404 HANDLER ================= */
+
+app.use((req, res) => {
+  res.status(404).json({ message: "Route not found" });
+});
+
 /* ================= START SERVER ================= */
 
-app.listen(5000, () => {
-  console.log("Server running on port 5000");
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });

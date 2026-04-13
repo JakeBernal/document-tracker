@@ -1,4 +1,5 @@
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
 
 const mysql = require("mysql2");
 
@@ -16,6 +17,7 @@ db.connect((err) => {
     console.log("MySQL Connected!");
   }
 });
+
 console.log("ENV USER:", process.env.DB_USER);
 console.log("ENV PASS:", process.env.DB_PASSWORD);
 

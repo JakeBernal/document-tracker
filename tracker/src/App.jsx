@@ -3,13 +3,12 @@ import Signin from "./pages/signin";
 import Home from "./pages/home";
 <<<<<<< HEAD
 import Signup from "./pages/signup";
+<<<<<<< HEAD
+=======
 import RequestForm from "./pages/RequestForm";
 import Admin from "./pages/admin";
 import Citizen from "./pages/citizen";
 import AdminRoute from "./routes/AdminRoute";
-=======
-import Signup from "./pages/signup"
->>>>>>> parent of 84f8b15 (Initial commit)
 
 function App() {
   return (
@@ -19,6 +18,8 @@ function App() {
         <Route path="/signin" element={<Signin />} />
 <<<<<<< HEAD
         <Route path="/signup" element={<Signup />} />
+<<<<<<< HEAD
+=======
         <Route path="/request" element={<RequestForm />} />
 
         {/* Citizen page */}
@@ -33,9 +34,6 @@ function App() {
             </AdminRoute>
           }
         />
-=======
-        <Route path="/signup" element={<Signup />} /> 
->>>>>>> parent of 84f8b15 (Initial commit)
       </Routes>
     </>
   );

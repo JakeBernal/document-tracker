@@ -1,4 +1,4 @@
-
+import "../css/howitworks.css"
 export default function howitworks() {
     const steps = [
     "Submit Request",
@@ -8,6 +8,7 @@ export default function howitworks() {
   ];  
   return (
      <section className="how">
+
       <h2>How it works</h2>
       <div className="steps">
         {steps.map((step, i) => (

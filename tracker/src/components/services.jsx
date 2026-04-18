@@ -3,6 +3,7 @@ import clearance from  "../assets/doc.png"
 import certificate from "../assets/certificate.png"
 import indigency from "../assets/contract.png"
 import job from "../assets/job.png"
+import "../css/services.css"
 
 export default function services() {
   const services = [

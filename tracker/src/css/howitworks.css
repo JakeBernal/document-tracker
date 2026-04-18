@@ -1,0 +1,21 @@
+
+
+/* HOW IT WORKS */
+.how {
+  background: linear-gradient(180deg, #2f4ea1, #3c5fc4);
+  color: white;
+  padding: 40px;
+  text-align: center;
+  font-family: 'Poppins', sans-serif;
+}
+
+.steps {
+  display: flex;
+  justify-content: center;
+  gap: 30px;
+  margin-top: 20px;
+}
+
+.steps div {
+  text-align: center;
+}

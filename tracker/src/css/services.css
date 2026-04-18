@@ -1,0 +1,63 @@
+
+/* SERVICES */
+.services {
+  padding: 40px;
+  text-align: center;
+}
+.services h2{
+   margin-bottom: 2rem;
+   font-family: 'Poppins', sans-serif;
+   font-size:large;
+   font-weight: 500;
+}
+
+.card-container {
+  display: flex;
+  justify-content: center;
+  gap: 35px;
+  margin-top: 15px;
+  flex-wrap: wrap;
+}
+
+.card {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  width: 230px;
+  text-align: center;
+  box-shadow: 0 5px 10px rgba(0,0,0,0.2);
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.card h3{
+  font-family: 'Roboto', sans-serif;
+  margin-bottom: 1rem;
+}
+.card p{
+   font-family: 'Roboto', sans-serif;
+}
+.card img {
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+  margin-bottom: 10px;
+}
+
+.seemore{
+  display: inline-block;
+  margin-top: 40px;
+  padding: 5px; 
+  text-decoration: none;
+  font-family: 'Roboto';
+  font-weight: bold;
+  color: #1E3A8A;
+
+  border-bottom: 2px solid transparent;
+}
+.seemore:hover{
+  border-bottom: 2px solid #1E3A8A;
+}

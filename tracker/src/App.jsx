@@ -4,8 +4,6 @@ import Home from "./pages/home";
 
 import Signup from "./pages/signup";
 
-
-import RequestForm from "./pages/RequestForm";
 import Admin from "./pages/admin";
 import Citizen from "./pages/citizen";
 import AdminRoute from "./routes/AdminRoute";
@@ -19,7 +17,7 @@ function App() {
 
         <Route path="/signup" element={<Signup />} />
 
-        <Route path="/request" element={<RequestForm />} />
+      
 
         {/* Citizen page */}
         <Route path="/citizen" element={<Citizen />} />

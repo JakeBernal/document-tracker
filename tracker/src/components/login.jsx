@@ -44,7 +44,7 @@ export default function Login() {
         if (data.user.role === "admin") {
           navigate("/admin");
         } else {
-          navigate("/");
+          navigate("/citizen");
         }
       } else {
         alert(data.message || "Login failed");

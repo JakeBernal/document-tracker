@@ -1,10 +1,10 @@
 import { Routes, Route } from "react-router-dom";
 import Signin from "./pages/signin";
 import Home from "./pages/home";
-<<<<<<< HEAD
+
 import Signup from "./pages/signup";
-<<<<<<< HEAD
-=======
+
+
 import RequestForm from "./pages/RequestForm";
 import Admin from "./pages/admin";
 import Citizen from "./pages/citizen";
@@ -16,10 +16,9 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/signin" element={<Signin />} />
-<<<<<<< HEAD
+
         <Route path="/signup" element={<Signup />} />
-<<<<<<< HEAD
-=======
+
         <Route path="/request" element={<RequestForm />} />
 
         {/* Citizen page */}

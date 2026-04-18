@@ -8,9 +8,9 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: "Times New Roman", Times, serif;
  
 }
+
 body {
   background: #f5f7fb;
 }
@@ -27,18 +27,18 @@ body {
 }
 
 .logo {
-  font-weight: 500;
-  font-size: 14px; /* slightly bigger text too */
+  font-weight:500;
+  font-size: 11px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 5px;
   font-family: Arial;
   color: #f5f7fb;
 }
 
-.logo img {
-  height: 50px;  /* 🔥 THIS controls logo size */
-  width: auto;
+.img {
+  height: auto;
+  width: 50px;
 }
 
 .navbar ul {
@@ -238,239 +238,3 @@ li:hover{
   padding: 20px;
 }
 
-
-/* ── CLICKABLE CARD ── */
-.clickable-card {
-  cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.clickable-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
-}
-
-.fee-badge {
-  display: inline-block;
-  margin-top: 10px;
-  padding: 3px 12px;
-  background: #e8eefb;
-  color: #1E3A8A;
-  border-radius: 20px;
-  font-size: 12px;
-  font-family: 'Roboto', sans-serif;
-  font-weight: 500;
-}
-
-/* ── MODAL OVERLAY ── */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal-box {
-  background: #ffffff;
-  border-radius: 14px;
-  padding: 28px 24px 24px;
-  width: 340px;
-  max-width: 92vw;
-  position: relative;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
-}
-
-/* ── CLOSE BUTTON ── */
-.modal-close-btn {
-  position: absolute;
-  top: 12px;
-  right: 14px;
-  background: none;
-  border: none;
-  font-size: 17px;
-  color: #999;
-  cursor: pointer;
-  line-height: 1;
-}
-.modal-close-btn:hover { color: #333; }
-
-/* ── IMAGE PREVIEW ── */
-.modal-img-wrap {
-  width: 100%;
-  height: 190px;
-  background: #2d5c3e;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  margin-bottom: 16px;
-}
-.modal-img {
-  max-width: 75%;
-  max-height: 75%;
-  object-fit: contain;
-}
-
-/* ── TEXT ── */
-.modal-category {
-  font-family: 'Roboto', sans-serif;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #1E3A8A;
-  font-weight: 500;
-  text-align: center;
-  margin-bottom: 4px;
-}
-.modal-title {
-  font-family: 'Poppins', sans-serif;
-  font-size: 16px;
-  font-weight: 600;
-  text-align: center;
-  color: #111827;
-  margin-bottom: 8px;
-}
-.modal-fulldesc {
-  font-family: 'Roboto', sans-serif;
-  font-size: 13px;
-  color: #6b7280;
-  text-align: center;
-  line-height: 1.6;
-  margin-bottom: 8px;
-}
-.modal-fee {
-  font-family: 'Roboto', sans-serif;
-  font-size: 13px;
-  color: #374151;
-  text-align: center;
-  margin-bottom: 18px;
-}
-
-/* ── ACTION BUTTONS ── */
-.modal-actions {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-}
-.modal-btn {
-  padding: 10px 36px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-family: 'Roboto', sans-serif;
-  font-weight: 500;
-  cursor: pointer;
-  border: none;
-  transition: background 0.15s;
-}
-.view-btn  { background: #e8eefb; color: #1E3A8A; }
-.view-btn:hover  { background: #d0dcf5; }
-.choose-btn { background: #1E3A8A; color: #ffffff; }
-.choose-btn:hover { background: #15306e; }
-
-/* ── FULL IMAGE VIEW ── */
-.modal-fullimg-wrap {
-  width: 100%;
-  margin-bottom: 14px;
-}
-.modal-fullimg {
-  width: 100%;
-  border-radius: 8px;
-  object-fit: contain;
-}
-.modal-back-btn {
-  background: none;
-  border: none;
-  color: #1E3A8A;
-  font-family: 'Roboto', sans-serif;
-  font-size: 14px;
-  cursor: pointer;
-  display: block;
-  margin: 0 auto;
-}
-.modal-back-btn:hover { text-decoration: underline; }
-
-.service-tabs {
-  display: flex;
-  justify-content: center;
-  margin: 20px 0 40px;
-  gap: 0;
-}
-
-.tab {
-  width: 220px;
-  padding: 12px 0;
-  border: none;
-  background: #d9d9d9;
-  font-size: 18px;   /* ✅ smaller */
-  font-family: "Times New Roman", Times, serif;
-  cursor: pointer;
-}
-
-.tab.active {
-  background: #b8d5c8;
-}
-
-.card-container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 30px;
-  justify-content: center;
-}
-
-.card {
-  position: relative;
-  width: 220px;
-  min-height: 260px;
-  background: #d9d9d9;
-  padding: 20px;
-  cursor: pointer;
-  text-align: center;
-  border-radius: 6px;
-}
-
-.service-badge {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: bold;
-}
-
-.barangay-badge {
-  background: orange;
-  color: black;
-}
-
-.lgu-badge {
-  background: #f4e37a;
-  color: black;
-}
-
-.see-more-container {
-  display: flex;
-  justify-content: center;
-  margin-top: 35px;
-  margin-bottom: 20px;
-}
-
-.see-more-btn {
-  background: transparent;
-  border: none;
-  font-family: "Times New Roman", Times, serif;
-  font-size: 18px;
-  font-weight: 600;
-  color: #2446a6;
-  cursor: pointer;
-  padding: 8px 18px;
-  transition: 0.3s ease;
-}
-
-.see-more-btn:hover {
-  color: #1a3278;
-  text-decoration: underline;
-}

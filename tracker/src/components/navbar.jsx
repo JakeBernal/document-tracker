@@ -1,44 +1,38 @@
-import React from "react";
+
 import { useNavigate } from "react-router-dom";
-import logo from "/logo.png"; // adjust path if needed
 
-export default function Navbar() {
+
+
+export default function navbar() {
   const navigate = useNavigate();
-  const user = JSON.parse(localStorage.getItem("user"));
+  
 
-  const handleLogout = () => {
-    localStorage.removeItem("user");
-    navigate("/");
-    window.location.reload();
+  const scrollToSection = (id) => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth" }); // smooth scrolling
+    }
   };
 
+
   return (
-    <nav className="navbar">
-      <div className="logo">
-        <img src={logo} alt="logo" className="img" />
-        Document Tracker
-      </div>
-      <ul>
-        <li><span className="nav-txt">Home</span></li>
-        <li><span className="nav-txt">Services</span></li>
-        <li><span className="nav-txt">About</span></li>
-      </ul>
-      <div className="nav-actions">
-        {user ? (
-          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-            <span style={{ color: "white", fontFamily: "Roboto", fontSize: "13px" }}>
-              Hi, {user.full_name}
-            </span>
-            <button className="primary" onClick={handleLogout} style={{ padding: "8px 18px", fontSize: "13px" }}>
-              Sign out
-            </button>
-          </div>
-        ) : (
-          <button className="primary" onClick={() => navigate("/signin")} style={{ padding: "8px 18px", fontSize: "13px" }}>
-            Sign in
-          </button>
-        )}
-      </div>
-    </nav>
-  );
+  <nav className="navbar">
+    <div className="logo">
+     <img className="img" src={'logo.png'} alt="Logo" />
+     PaperTrail<br></br>
+     Digital Solutions
+   </div>
+   <div className="nav-txt">
+    <ul>
+     <li onClick={() => navigate("/")}>Home </li>
+     <li onClick={() => scrollToSection("services")}>Services</li>
+     <li>About</li>
+     <li>Contact</li>
+    </ul>
+   </div>
+  <div className="nav-actions">
+      <button className="btn-signin" onClick={() => navigate("/signin")}>Sign In</button>
+  </div>
+</nav>
+  )
 }

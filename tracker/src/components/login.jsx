@@ -12,13 +12,17 @@ export default function Login() {
     password: "",
   });
 
+  const [message, setMessage] = useState("");
+
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleLogin = async () => {
+  const handleLogin = async (e) => {
+    e.preventDefault(); // IMPORTANT: stops page refresh
+
     if (!form.email || !form.password) {
-      alert("Please enter your email and password");
+      setMessage("Please enter your email and password!");
       return;
     }
 
@@ -28,30 +32,30 @@ export default function Login() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          email: form.email,
-          password: form.password,
-        }),
+        body: JSON.stringify(form),
       });
 
       const data = await res.json();
 
       if (res.ok) {
-        alert("Login success");
+        setMessage("Login success!");
 
         localStorage.setItem("user", JSON.stringify(data.user));
 
-        if (data.user.role === "admin") {
-          navigate("/admin");
-        } else {
-          navigate("/citizen");
-        }
+        // small delay so user can see message
+        setTimeout(() => {
+          if (data.user.role === "admin") {
+            navigate("/admin");
+          } else {
+            navigate("/citizen");
+          }
+        }, 500);
       } else {
-        alert(data.message || "Login failed");
+        setMessage("Incorrect email or password!");
       }
     } catch (err) {
       console.error("LOGIN ERROR:", err);
-      alert("Cannot connect to server");
+      setMessage("Cannot connect to the server");
     }
   };
 
@@ -65,35 +69,42 @@ export default function Login() {
           <span onClick={() => navigate("/signup")}>Register</span>
         </div>
 
-        <div className="form">
-          <label>Email</label>
-          <input
-            type="text"
-            name="email"
-            value={form.email}
-            onChange={handleChange}
-          />
+        <p style={{ color: "red", fontSize: "15px" }}>{message}</p>
 
-          <label>Password</label>
-          <input
-            type="password"
-            name="password"
-            value={form.password}
-            onChange={handleChange}
-          />
+        {/* FORM HANDLES ENTER KEY + SUBMIT */}
+        <form onSubmit={handleLogin}>
+          <div className="form">
+            <label>Email</label>
+            <input
+              type="text"
+              name="email"
+              value={form.email}
+              onChange={handleChange}
+            />
 
-          <div className="forgot">Forgot password?</div>
+            <label>Password</label>
+            <input
+              type="password"
+              name="password"
+              value={form.password}
+              onChange={handleChange}
+            />
 
-          <button type="button" className="signin-btn" onClick={handleLogin}>
-            Sign in
-          </button>
+            <div className="forgot">Forgot password?</div>
 
-          <div className="divider">or</div>
+            {/* LOGIN BUTTON (SUBMITS FORM) */}
+            <button type="submit" className="signin-btn">
+              Sign in
+            </button>
 
-          <button type="button" className="google-btn">
-            <img src={google} alt="" /> Sign in with Google
-          </button>
-        </div>
+            <div className="divider">or</div>
+
+            {/* GOOGLE BUTTON (DOES NOT SUBMIT FORM) */}
+            <button type="button" className="google-btn">
+              <img src={google} alt="" /> Sign in with Google
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

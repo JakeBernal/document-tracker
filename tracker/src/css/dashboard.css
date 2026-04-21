@@ -1,0 +1,78 @@
+.dashboard {
+  padding: 30px;
+  font-family: 'Roboto', sans-serif;
+}
+
+.dashboard h2 {
+  margin-bottom: 20px;
+}
+
+/* REQUEST BUTTON */
+.request-btn {
+  padding: 10px 20px;
+  border: none;
+  background: #1E3A8A;
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 25px;
+  transition: 0.2s;
+}
+
+.request-btn:hover {
+  background: #142c6e;
+}
+
+/* TABLE */
+.table-container {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 5px 12px rgba(0,0,0,0.1);
+}
+
+.table-container h3 {
+  margin-bottom: 15px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 12px;
+  text-align: left;
+}
+
+th {
+  background: #f3f4f6;
+}
+
+tr:nth-child(even) {
+  background: #f9fafb;
+}
+
+/* STATUS BADGES */
+.status {
+  padding: 5px 10px;
+  border-radius: 20px;
+  color: white;
+  font-size: 12px;
+}
+
+.pending {
+  background: orange;
+}
+
+.processing {
+  background: #2563eb;
+}
+
+.approved {
+  background: #16a34a;
+}
+
+.rejected {
+  background: #dc2626;
+}

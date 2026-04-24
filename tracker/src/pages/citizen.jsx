@@ -13,7 +13,7 @@ export default function UserDashboard() {
     const storedUser = JSON.parse(localStorage.getItem("user"));
 
     if (!storedUser) {
-      navigate("/login");
+      navigate("/signin");
       return;
     }
 
@@ -40,27 +40,27 @@ export default function UserDashboard() {
     }
   };
 
-  const getStatusClass = (status) => {
-    switch (status) {
-      case "Pending":
-        return "status pending";
-      case "Processing":
-        return "status processing";
-      case "Approved":
-        return "status approved";
-      case "Rejected":
-        return "status rejected";
-      default:
-        return "status";
-    }
-  };
+ const getStatusClass = (status) => {
+  switch (status) {
+    case "Pending":
+      return "status pending";
+    case "Processing":
+      return "status processing";
+    case "Ready for Pickup":
+      return "status ready";
+    case "Completed":
+      return "status completed";
+    default:
+      return "status";
+  }
+};
 
   return (
     <div className="dashboard">
 
       {/* HEADER */}
       <div className="header">
-        <h2>Welcome, {user?.name}</h2>
+        <h2>Welcome, {user?.full_name}</h2>
         <p>Citizen Document Portal</p>
       </div>
 
@@ -68,7 +68,7 @@ export default function UserDashboard() {
       <div className="actions">
         <button
           className="request-btn"
-          onClick={() => navigate("/request")}
+          onClick={() => navigate("/documents")}
         >
           + Request Document
         </button>
@@ -90,7 +90,7 @@ export default function UserDashboard() {
 
         <div className="card">
           <h3>
-            {requests.filter(r => r.status === "Approved").length}
+            {requests.filter(r => r.status === "Completed").length}
           </h3>
           <p>Approved</p>
         </div>

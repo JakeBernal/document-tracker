@@ -19,7 +19,7 @@ export default function Login() {
   };
 
   const handleLogin = async (e) => {
-    e.preventDefault(); // IMPORTANT: stops page refresh
+    e.preventDefault();
 
     if (!form.email || !form.password) {
       setMessage("Please enter your email and password!");
@@ -32,6 +32,7 @@ export default function Login() {
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify(form),
       });
 
@@ -42,7 +43,6 @@ export default function Login() {
 
         localStorage.setItem("user", JSON.stringify(data.user));
 
-        // small delay so user can see message
         setTimeout(() => {
           if (data.user.role === "admin") {
             navigate("/admin");
@@ -51,11 +51,11 @@ export default function Login() {
           }
         }, 500);
       } else {
-        setMessage("Incorrect email or password!");
+        setMessage(data.message || "Incorrect email or password!");
       }
     } catch (err) {
       console.error("LOGIN ERROR:", err);
-      setMessage("Cannot connect to the server");
+      setMessage("Cannot connect to the server. Check if backend is running on port 5001.");
     }
   };
 
@@ -71,7 +71,6 @@ export default function Login() {
 
         <p style={{ color: "red", fontSize: "15px" }}>{message}</p>
 
-        {/* FORM HANDLES ENTER KEY + SUBMIT */}
         <form onSubmit={handleLogin}>
           <div className="form">
             <label>Email</label>
@@ -92,14 +91,12 @@ export default function Login() {
 
             <div className="forgot">Forgot password?</div>
 
-            {/* LOGIN BUTTON (SUBMITS FORM) */}
             <button type="submit" className="signin-btn">
               Sign in
             </button>
 
             <div className="divider">or</div>
 
-            {/* GOOGLE BUTTON (DOES NOT SUBMIT FORM) */}
             <button type="button" className="google-btn">
               <img src={google} alt="" /> Sign in with Google
             </button>

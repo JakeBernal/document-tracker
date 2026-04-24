@@ -10,7 +10,7 @@ export default function Register() {
     full_name: "",
     email: "",
     password: "",
-    confirm_password: ""
+    confirm_password: "",
   });
 
   const [message, setMessage] = useState("");
@@ -20,7 +20,7 @@ export default function Register() {
   };
 
   const handleSubmit = async (e) => {
-    if (e) e.preventDefault();
+    e.preventDefault();
 
     if (!form.full_name || !form.email || !form.password || !form.confirm_password) {
       setMessage("Please fill in all fields");
@@ -36,13 +36,14 @@ export default function Register() {
       const res = await fetch("http://localhost:5001/api/register", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify({
           full_name: form.full_name,
           email: form.email,
-          password: form.password
-        })
+          password: form.password,
+        }),
       });
 
       const data = await res.json();
@@ -72,27 +73,45 @@ export default function Register() {
           <span className="active">Register</span>
         </div>
 
-        {/* MESSAGE DISPLAY */}
-        <p style={{ color: "red", fontSize: "15px" }}>
-          {message}
-        </p>
-      <form onSubmit={handleSubmit}>
-        <div className="form">
-          <label>Full Name</label>
-          <input name="full_name" value={form.full_name} onChange={handleChange}/>
+        <p style={{ color: "red", fontSize: "15px" }}>{message}</p>
 
-          <label>Email</label>
-          <input name="email" value={form.email} onChange={handleChange}/>
+        <form onSubmit={handleSubmit}>
+          <div className="form">
+            <label>Full Name</label>
+            <input
+              name="full_name"
+              value={form.full_name}
+              onChange={handleChange}
+            />
 
-          <label>Password</label>
-          <input type="password" name="password" value={form.password} onChange={handleChange}/>
+            <label>Email</label>
+            <input
+              name="email"
+              value={form.email}
+              onChange={handleChange}
+            />
 
-          <label>Confirm Password</label>
-          <input type="password" name="confirm_password" value={form.confirm_password} onChange={handleChange}/>
+            <label>Password</label>
+            <input
+              type="password"
+              name="password"
+              value={form.password}
+              onChange={handleChange}
+            />
 
-          <button type="submit" className="signin-btn" onClick={handleSubmit}>Create Account</button>
-        </div>
-      </form>
+            <label>Confirm Password</label>
+            <input
+              type="password"
+              name="confirm_password"
+              value={form.confirm_password}
+              onChange={handleChange}
+            />
+
+            <button type="submit" className="signin-btn">
+              Create Account
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

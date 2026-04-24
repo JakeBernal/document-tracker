@@ -2,37 +2,39 @@ const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
 const db = require("./config/db");
-
 const requestRoutes = require("./routes/requestRoutes");
 
 const app = express();
-const PORT = 5001;
+const PORT = process.env.PORT || 5000;
+
+const corsOptions = {
+  origin: "http://localhost:5173",
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+};
 
 /* ================= MIDDLEWARE ================= */
-
-app.use(
-  cors({
-    origin: "http://localhost:5173",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type"],
-  })
-);
-
+app.use(cors(corsOptions));
 app.use(express.json());
 
 app.use((req, res, next) => {
-  console.log("🔥 HIT:", req.method, req.url);
+  res.header("Access-Control-Allow-Origin", "http://localhost:5173");
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header("Access-Control-Allow-Credentials", "true");
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+
   next();
 });
 
-// CORS
-app.use(cors({
-  origin: "http://localhost:5173",
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  credentials: true
-}));
-
-app.use(express.json());
+app.use((req, res, next) => {
+  console.log("HIT:", req.method, req.url);
+  next();
+});
 
 /* ================= AUTH ROUTES ================= */
 
@@ -50,8 +52,8 @@ app.post("/api/register", async (req, res) => {
     const hashed = await bcrypt.hash(password, 10);
 
     db.query(
-      "INSERT INTO users (full_name, email, password) VALUES (?, ?, ?)",
-      [full_name, email, hashed],
+      "INSERT INTO users (full_name, email, password, role) VALUES (?, ?, ?, ?)",
+      [full_name, email, hashed, "citizen"],
       (err, result) => {
         if (err) {
           console.log("REGISTER ERROR:", err);
@@ -124,17 +126,14 @@ app.post("/api/login", (req, res) => {
 });
 
 /* ================= OTHER ROUTES ================= */
-
 app.use("/api", requestRoutes);
 
 /* ================= 404 HANDLER ================= */
-
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
 
 /* ================= START SERVER ================= */
-
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

@@ -86,7 +86,7 @@ export default function Services() {
   };
 
   const handleChoose = () => {
-    navigate("/signin", { state: { document: selected } });
+    navigate("/request", { state: { document: selected } });
     closeModal();
   };
 

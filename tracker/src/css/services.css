@@ -39,27 +39,34 @@
   color: white;
 }
 
-/* CARDS */
+/* CARDS CONTAINER (FIXED LAYOUT) */
 .card-container {
-  display: flex;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 230px));
   gap: 25px;
-  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
 }
 
+/* CARD */
 .card {
   background: white;
   padding: 20px;
   border-radius: 12px;
   width: 230px;
+  height: 280px; /* 🔥 FIXED HEIGHT (prevents LGU expansion) */
+
+  box-sizing: border-box;
   text-align: center;
   box-shadow: 0 5px 12px rgba(0,0,0,0.15);
 
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   align-items: center;
 
   transition: transform 0.25s ease, box-shadow 0.25s ease;
+  overflow: hidden; /* 🔥 prevents content overflow growth */
 }
 
 .clickable-card {
@@ -71,25 +78,36 @@
   box-shadow: 0 10px 18px rgba(0,0,0,0.2);
 }
 
+/* IMAGE */
 .card img {
   width: 60px;
   height: 60px;
   object-fit: contain;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
 }
 
+/* TITLE */
 .card h3 {
   font-family: 'Roboto', sans-serif;
-  margin-bottom: 10px;
+  margin-bottom: 5px;
+  font-size: 14px;
 }
 
+/* DESCRIPTION (FIXED TO PREVENT LGU EXPAND ISSUE) */
 .card p {
   font-family: 'Roboto', sans-serif;
-  font-size: 14px;
+  font-size: 13px;
   color: #555;
+
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+
+  min-height: 34px; /* 🔥 keeps all cards equal */
 }
 
-/* BADGES */
+/* BADGE */
 .service-badge {
   font-size: 12px;
   padding: 4px 10px;
@@ -99,22 +117,16 @@
   color: white;
 }
 
-.barangay-badge {
-  background: #16a34a;
-}
-
-.lgu-badge {
-  background: #2563eb;
-}
-
+/* FEE */
 .fee-badge {
   margin-top: 10px;
   font-size: 13px;
   font-weight: bold;
   color: #1E3A8A;
+  font-family: 'Roboto', sans-serif;
 }
 
-/* SEE MORE BUTTON */
+/* SEE MORE */
 .see-more-container {
   margin-top: 25px;
 }
@@ -133,10 +145,7 @@
   background: #142c6e;
 }
 
-
-.fee-badge{
-  font-family: 'Roboto', sans-serif;
-}/* MODAL OVERLAY */
+/* MODAL OVERLAY */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -168,11 +177,11 @@
   animation: fadeIn 0.25s ease;
 }
 
-/* CLOSE BUTTON (FIXED POSITION) */
+/* CLOSE BUTTON */
 .modal-close-btn {
   position: absolute;
   top: 15px;
-  left: 15px; 
+  left: 15px;
   color: black;
   border: none;
   width: 35px;
@@ -182,7 +191,7 @@
   cursor: pointer;
 }
 
-/* IMAGE */
+/* MODAL IMAGE */
 .modal-img {
   width: 80px;
   margin-bottom: 15px;
@@ -209,13 +218,12 @@
   margin-bottom: 15px;
 }
 
-/* BUTTON CONTAINER */
+/* BUTTONS */
 .modal-actions {
   display: flex;
   gap: 12px;
 }
 
-/* BUTTONS */
 .modal-btn {
   padding: 8px 18px;
   border-radius: 10px;
@@ -224,19 +232,16 @@
   font-size: 14px;
 }
 
-/* VIEW BUTTON */
 .view-btn {
   background: #1E3A8A;
   color: #fff;
 }
 
-/* CHOOSE BUTTON */
 .choose-btn {
   background: #f5f7fbce;
   color: #1E3A8A;
 }
 
-/* HOVER EFFECT */
 .modal-btn:hover {
   opacity: 0.9;
 }

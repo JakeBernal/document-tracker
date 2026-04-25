@@ -53,6 +53,13 @@ export default function Navbar() {
 
             {open && (
               <div className="dropdown">
+                  <div className="dropdown-header">
+                  <p className="user-name">{user?.full_name}</p>
+                  <small className="user-email">{user?.email}</small>
+                </div>
+                 <p onClick={() => navigate("/profile")}>
+                  My Profile
+                </p>
                 <p onClick={() => navigate("/request")}>
                   Request Document
                 </p>
@@ -65,6 +72,7 @@ export default function Navbar() {
           </div>
         )}
       </div>
+      
     </nav>
   );
 }

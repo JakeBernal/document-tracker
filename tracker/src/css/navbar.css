@@ -1,23 +1,26 @@
-
-/* NAVBAR */
+/* ================= NAVBAR ONLY ================= */
 .navbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 15px 70px;
-  cursor: pointer;
   background-color: #1E3A8A;
   box-shadow: 0 5px 5px rgba(0,0,0,0.4);
+  position: sticky;
+  top: 0;
+  z-index: 1000;
 }
 
+/* LOGO */
 .logo {
-  font-weight:500;
+  font-weight: 500;
   font-size: 11px;
   display: flex;
   align-items: center;
   gap: 5px;
   font-family: Arial;
   color: #f5f7fb;
+  cursor: pointer;
 }
 
 .img {
@@ -25,29 +28,121 @@
   width: 50px;
 }
 
+/* NAV LINKS */
 .navbar ul {
   display: flex;
   gap: 80px;
   list-style: none;
-}
-li:hover{
-  border-bottom: #ffffff solid 1.5px;
+  margin: 0;
+  padding: 0;
 }
 
-.nav-txt{
+.nav-txt {
   font-family: 'Roboto', sans-serif;
   color: #f5f7fb;
- 
 }
 
-.nav-actions a{
-  color: #1E3A8A;
-  font-family: 'roboto';
+.nav-txt li {
+  cursor: pointer;
+  transition: 0.2s ease;
 }
-li:hover{
+
+.nav-txt li:hover {
   color: #bfbdcdcd;
+  border-bottom: 1.5px solid #ffffff;
 }
 
+/* RIGHT SIDE */
+.nav-actions {
+  display: flex;
+  align-items: center;
+}
+
+/* SIGN IN BUTTON */
+.btn-signin {
+  background: #ffffff;
+  color: #1E3A8A;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-family: 'Roboto';
+  cursor: pointer;
+  font-weight: 500;
+}
+
+/* PROFILE CONTAINER */
+.profile-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* AVATAR */
+.profile {
+  cursor: pointer;
+}
+
+.avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: white;
+  color: #1E3A8A;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+/* DROPDOWN */
+.dropdown {
+  position: absolute;
+  top: 50px;
+  right: 0;
+  width: 220px;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+  padding: 10px 0;
+  z-index: 999;
+}
+
+/* DROPDOWN HEADER */
+.dropdown-header {
+  padding: 10px 15px;
+}
+
+.user-name {
+  font-weight: bold;
+  margin: 0;
+}
+
+.user-email {
+  font-size: 12px;
+  color: gray;
+}
+
+/* DROPDOWN ITEMS */
+.dropdown p {
+  margin: 0;
+  padding: 10px 15px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.dropdown p:hover {
+  background: #f2f2f2;
+}
+
+.dropdown hr {
+  margin: 5px 0;
+  border: none;
+  border-top: 1px solid #eee;
+}
+
+.logout {
+  color: red;
+}
 
 .hero {
   text-align: center;

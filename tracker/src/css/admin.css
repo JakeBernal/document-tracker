@@ -70,11 +70,18 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 22px;
+  gap: 15px;
 }
 
 .admin-table-header h2 {
   color: #111827;
   font-size: 24px;
+  margin-bottom: 5px;
+}
+
+.admin-table-header p {
+  color: #6b7280;
+  font-size: 14px;
 }
 
 .admin-table-header button {
@@ -91,10 +98,15 @@
   background: #dbeafe;
 }
 
+.admin-table-header button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .admin-table-container table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 850px;
+  min-width: 1150px;
 }
 
 .admin-table-container th,
@@ -102,11 +114,12 @@
   text-align: left;
   padding: 15px 12px;
   font-size: 15px;
+  vertical-align: top;
 }
 
 .admin-table-container th {
   color: #6b7280;
-  font-weight: 600;
+  font-weight: 700;
   border-bottom: 1px solid #e5e7eb;
 }
 
@@ -115,10 +128,165 @@
   border-bottom: 1px solid #f1f1f1;
 }
 
-.admin-empty {
+.admin-empty,
+.admin-loading {
   text-align: center !important;
   color: #6b7280 !important;
   padding: 30px !important;
+}
+
+.admin-message {
+  margin-bottom: 18px;
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.admin-small-text {
+  margin: 5px 0 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.admin-muted {
+  color: #9ca3af;
+}
+
+.admin-status,
+.admin-payment {
+  display: inline-block;
+  padding: 7px 11px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.admin-status.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.admin-status.processing {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.admin-status.needs-info {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.admin-status.approved {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.admin-status.ready {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.admin-status.completed {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.admin-status.rejected {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.admin-payment.unpaid {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.admin-payment.paid {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.admin-payment.waived {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.admin-file-link {
+  color: #1e3a8a;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.admin-file-link:hover {
+  text-decoration: underline;
+}
+
+.admin-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 160px;
+}
+
+.admin-actions select {
+  padding: 8px 10px;
+  border: 1px solid #cfd4dc;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+}
+
+.admin-actions select:focus {
+  border-color: #1e3a8a;
+}
+
+.admin-pay-btn {
+  background: #1e3a8a;
+  color: white;
+  border: none;
+  padding: 9px 11px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.admin-pay-btn:hover {
+  background: #172f70;
+}
+
+.admin-details {
+  margin-top: 8px;
+}
+
+.admin-details summary {
+  color: #1e3a8a;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.admin-detail-list {
+  margin-top: 8px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px;
+  max-width: 360px;
+}
+
+.admin-detail-list p {
+  margin: 5px 0;
+  font-size: 13px;
+  color: #374151;
+}
+
+.admin-detail-list span {
+  font-weight: 800;
+  text-transform: capitalize;
 }
 
 @media (max-width: 1000px) {
@@ -149,4 +317,96 @@
   .admin-table-header button {
     width: 100%;
   }
+}
+
+.requests-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.dashboard-error-message {
+  margin: 16px 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  font-weight: 700;
+}
+
+.status,
+.payment {
+  display: inline-block;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.status.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status.processing {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.status.needs-info {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.status.ready {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.status.approved {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status.rejected {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.payment.unpaid {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.payment.paid {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.payment.waived {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.payment-method,
+.request-note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.view-file-link {
+  color: #1f3c88;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.view-file-link:hover {
+  text-decoration: underline;
+}
+
+.no-file-text {
+  color: #9ca3af;
+  font-size: 14px;
 }

@@ -10,7 +10,7 @@ console.log("ENV DB_NAME:", process.env.DB_NAME);
 const db = mysql.createConnection({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
-  password: process.env.DB_PASS,
+  password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
 });
 

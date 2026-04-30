@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+
 import clearance from "../assets/doc.png";
 import certificate from "../assets/certificate.png";
 import indigency from "../assets/contract.png";
 import job from "../assets/job.png";
 import approve from "../assets/approve.png";
+
 import "../css/services.css";
 
 export default function Services() {
@@ -68,12 +70,30 @@ export default function Services() {
     },
   ];
 
-  const filtered =
+  const filteredServices =
     activeTab === "All"
       ? allServices
-      : allServices.filter((s) => s.category === activeTab);
+      : allServices.filter((service) => service.category === activeTab);
 
-  const displayed = showAll ? filtered : filtered.slice(0, 5);
+  const displayedServices = showAll
+    ? filteredServices
+    : filteredServices.slice(0, 5);
+
+  const getUser = () => {
+    const storedUser = localStorage.getItem("user");
+
+    if (!storedUser) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(storedUser);
+    } catch (error) {
+      localStorage.removeItem("user");
+      localStorage.removeItem("token");
+      return null;
+    }
+  };
 
   const openModal = (service) => {
     setSelected(service);
@@ -86,7 +106,14 @@ export default function Services() {
   };
 
   const handleChoose = () => {
-    navigate("/request", { state: { document: selected } });
+    const user = getUser();
+
+    if (!user) {
+      navigate("/signin");
+      return;
+    }
+
+    navigate("/documents");
     closeModal();
   };
 
@@ -94,11 +121,11 @@ export default function Services() {
     <section className="services" id="services">
       <h2>Services</h2>
 
-      {/* Tabs */}
       <div className="service-tabs">
         {["All", "Barangay", "LGU"].map((tab) => (
           <button
             key={tab}
+            type="button"
             className={activeTab === tab ? "tab active" : "tab"}
             onClick={() => {
               setActiveTab(tab);
@@ -110,28 +137,30 @@ export default function Services() {
         ))}
       </div>
 
-      {/* Cards */}
       <div className="card-container">
-        {displayed.map((service) => (
+        {displayedServices.map((service) => (
           <div
-            className="card clickable-card"
+            className="service-card clickable-card"
             key={service.id}
             onClick={() => openModal(service)}
           >
             <span className="service-badge">{service.category}</span>
 
             <img src={service.image} alt={service.title} />
+
             <h3>{service.title}</h3>
+
             <p>{service.desc}</p>
+
             <span className="fee-badge">{service.fee}</span>
           </div>
         ))}
       </div>
 
-      {/* See More */}
-      {filtered.length > 5 && (
+      {filteredServices.length > 5 && (
         <div className="see-more-container">
           <button
+            type="button"
             className="see-more-btn"
             onClick={() => setShowAll(!showAll)}
           >
@@ -140,72 +169,71 @@ export default function Services() {
         </div>
       )}
 
-      {/* Modal */}
-{selected && (
-  <div className="modal-overlay" onClick={closeModal}>
-    <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-      
-      {viewFull ? (
-        <>
-          <img
-            src={selected.image}
-            alt={selected.title}
-            className="modal-fullimg"
-          />
+      {selected && (
+        <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            {viewFull ? (
+              <>
+                <img
+                  src={selected.image}
+                  alt={selected.title}
+                  className="modal-fullimg"
+                />
 
-          <button
-            className="modal-btn back-btn"
-            onClick={() => setViewFull(false)}
-          >
-            Back
-          </button>
-        </>
-      ) : (
-        <>
-          {/* CLOSE BUTTON */}
-          <button className="modal-close-btn" onClick={closeModal}>
-            X
-          </button>
+                <button
+                  type="button"
+                  className="modal-btn back-btn"
+                  onClick={() => setViewFull(false)}
+                >
+                  Back
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  onClick={closeModal}
+                >
+                  ×
+                </button>
 
-          {/* IMAGE */}
-          <img
-            src={selected.image}
-            alt={selected.title}
-            className="modal-img"
-          />
+                <img
+                  src={selected.image}
+                  alt={selected.title}
+                  className="modal-img"
+                />
 
-          {/* TITLE */}
-          <h3 className="modal-title">{selected.title}</h3>
+                <h3 className="modal-title">{selected.title}</h3>
 
-          {/* DESCRIPTION */}
-          <p className="modal-fulldesc">{selected.fullDesc}</p>
+                <p className="modal-fulldesc">{selected.fullDesc}</p>
 
-          {/* FEE */}
-          <p className="modal-fee">
-            Fee: <strong>{selected.fee}</strong>
-          </p>
+                <p className="modal-fee">
+                  Fee: <strong>{selected.fee}</strong>
+                </p>
 
-          {/* ACTION BUTTONS */}
-          <div className="modal-actions">
-            <button
-              className="modal-btn view-btn"
-              onClick={() => setViewFull(true)}
-            >
-              View
-            </button>
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="modal-btn view-btn"
+                    onClick={() => setViewFull(true)}
+                  >
+                    View
+                  </button>
 
-            <button
-              className="modal-btn choose-btn"
-              onClick={handleChoose}
-            >
-              Choose
-            </button>
+                  <button
+                    type="button"
+                    className="modal-btn choose-btn"
+                    onClick={handleChoose}
+                  >
+                    Choose
+                  </button>
+                </div>
+              </>
+            )}
           </div>
-        </>
+        </div>
       )}
-    </div>
-  </div>
-)}
     </section>
   );
 }

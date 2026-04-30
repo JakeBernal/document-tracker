@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import Navbar from "../components/navbar";
 import "../css/citizen.css";
-import Userbar from "../components/userbar";
 
 export default function UserDashboard() {
   const navigate = useNavigate();
@@ -11,15 +11,22 @@ export default function UserDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = JSON.parse(localStorage.getItem("user"));
+    const storedUserRaw = localStorage.getItem("user");
 
-    if (!storedUser) {
+    if (!storedUserRaw) {
       navigate("/signin");
       return;
     }
 
-    setUser(storedUser);
-    fetchRequests(storedUser.id);
+    try {
+      const storedUser = JSON.parse(storedUserRaw);
+      setUser(storedUser);
+      fetchRequests(storedUser.id);
+    } catch (error) {
+      console.error("Invalid user data:", error);
+      localStorage.removeItem("user");
+      navigate("/signin");
+    }
   }, [navigate]);
 
   const fetchRequests = async (userId) => {
@@ -27,13 +34,19 @@ export default function UserDashboard() {
       setLoading(true);
 
       const res = await fetch(
-        `http://localhost:5000/api/requests/user/${userId}`
+        `http://localhost:5001/api/requests/user/${userId}`
       );
 
       const data = await res.json();
-      setRequests(data);
+
+      if (Array.isArray(data)) {
+        setRequests(data);
+      } else {
+        setRequests([]);
+      }
     } catch (error) {
       console.error("Error fetching requests:", error);
+      setRequests([]);
     } finally {
       setLoading(false);
     }
@@ -48,19 +61,71 @@ export default function UserDashboard() {
       case "Ready for Pickup":
         return "status ready";
       case "Completed":
-        return "status completed";
+      case "Approved":
+        return "status approved";
+      case "Rejected":
+        return "status rejected";
       default:
         return "status";
     }
   };
 
+  const getDocumentName = (req) => {
+    try {
+      if (req.document) return req.document;
+      if (req.document_name) return req.document_name;
+
+      if (req.notes) {
+        const notes =
+          typeof req.notes === "string" ? JSON.parse(req.notes) : req.notes;
+
+        return notes.document_name || "Document Request";
+      }
+
+      return "Document Request";
+    } catch {
+      return "Document Request";
+    }
+  };
+
+  const getRequestDate = (req) => {
+    const rawDate = req.created_at || req.date || req.updated_at;
+
+    if (!rawDate) return "—";
+
+    const date = new Date(rawDate);
+
+    if (Number.isNaN(date.getTime())) {
+      return rawDate;
+    }
+
+    return date.toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  const totalRequests = requests.length;
+
+  const pendingRequests = requests.filter(
+    (req) => req.status === "Pending"
+  ).length;
+
+  const approvedRequests = requests.filter(
+    (req) =>
+      req.status === "Approved" ||
+      req.status === "Completed" ||
+      req.status === "Ready for Pickup"
+  ).length;
+
   return (
     <>
-      <Userbar />
+      <Navbar />
 
       <div className="dashboard">
         <div className="header">
-          <h2>Welcome, {user?.full_name}</h2>
+          <h2>Welcome, {user?.full_name || "User"}</h2>
           <p>Citizen Document Portal</p>
         </div>
 
@@ -75,26 +140,39 @@ export default function UserDashboard() {
 
         <div className="status-cards">
           <div className="card">
-            <h3>{requests.length}</h3>
+            <h3>{totalRequests}</h3>
             <p>Total Requests</p>
           </div>
 
           <div className="card">
-            <h3>{requests.filter((r) => r.status === "Pending").length}</h3>
+            <h3>{pendingRequests}</h3>
             <p>Pending</p>
           </div>
 
           <div className="card">
-            <h3>{requests.filter((r) => r.status === "Completed").length}</h3>
+            <h3>{approvedRequests}</h3>
             <p>Approved</p>
           </div>
         </div>
 
         <div className="table-container">
-          <h3>Your Document Requests</h3>
+          <div className="table-title-row">
+            <div>
+              <h3>Your Document Requests</h3>
+              <p>View and track your submitted requests.</p>
+            </div>
+
+            <button
+              className="refresh-btn"
+              onClick={() => fetchRequests(user?.id)}
+              disabled={loading || !user?.id}
+            >
+              Refresh
+            </button>
+          </div>
 
           {loading ? (
-            <p>Loading requests...</p>
+            <p className="loading-text">Loading requests...</p>
           ) : (
             <table>
               <thead>
@@ -108,19 +186,21 @@ export default function UserDashboard() {
               <tbody>
                 {requests.length > 0 ? (
                   requests.map((req) => (
-                    <tr key={req.id}>
-                      <td>{req.document}</td>
-                      <td>{req.date}</td>
+                    <tr key={req.id || req.request_id}>
+                      <td>{getDocumentName(req)}</td>
+                      <td>{getRequestDate(req)}</td>
                       <td>
                         <span className={getStatusClass(req.status)}>
-                          {req.status}
+                          {req.status || "Pending"}
                         </span>
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="3">No requests found</td>
+                    <td colSpan="3" className="no-requests">
+                      No requests found
+                    </td>
                   </tr>
                 )}
               </tbody>

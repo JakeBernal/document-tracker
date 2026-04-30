@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/navbar";
 import "../css/documents.css";
@@ -12,48 +12,35 @@ export default function Documents() {
   const [showAll, setShowAll] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [zoomImage, setZoomImage] = useState(null);
-
   const [showChoiceModal, setShowChoiceModal] = useState(false);
-  const handleChooseSubDocument = (choice) => {
-  const chosenDocument = {
-    ...selected,
-    title: choice.title,
-    images: choice.images,
-    desc: choice.description,
-    fullDesc: choice.description,
-    requirement: choice.uploadLabel,
-    uploadLabel: choice.uploadLabel,
-    selectedChoiceId: choice.id,
-    parentTitle: selected.title,
-  };
 
-  navigate("/request", { state: { document: chosenDocument } });
+  const user = JSON.parse(localStorage.getItem("user") || "null");
 
-  setShowChoiceModal(false);
-  closeModal();
-};
+  useEffect(() => {
+    if (!user) {
+      navigate("/signin");
+    }
+  }, [navigate, user]);
 
-const documents = useMemo(() => {
-  return Object.entries(documentRequirements)
-    .filter(([_, doc]) => !doc.hideFromList)
-    .map(([title, doc]) => ({
-      id: doc.id,
-      title,
-      category: doc.category,
-      desc: doc.description,
-      images: doc.images || [],
-      fee: doc.fee,
-      time: doc.time,
-      requirement: doc.uploadLabel,
-      uploadLabel: doc.uploadLabel,
-      fullDesc: doc.description,
-      fields: doc.fields || [],
-
-      // IMPORTANT FOR FIRST TIME JOBSEEKER CHOICES
-      hasChoices: doc.hasChoices || false,
-      choices: doc.choices || [],
-    }));
-}, []);
+  const documents = useMemo(() => {
+    return Object.entries(documentRequirements)
+      .filter(([_, doc]) => !doc.hideFromList)
+      .map(([title, doc]) => ({
+        id: doc.id,
+        title,
+        category: doc.category,
+        desc: doc.description,
+        images: doc.images || [],
+        fee: doc.fee,
+        time: doc.time,
+        requirement: doc.uploadLabel,
+        uploadLabel: doc.uploadLabel,
+        fullDesc: doc.description,
+        fields: doc.fields || [],
+        hasChoices: doc.hasChoices || false,
+        choices: doc.choices || [],
+      }));
+  }, []);
 
   const filteredDocuments =
     activeTab === "All"
@@ -64,88 +51,52 @@ const documents = useMemo(() => {
     ? filteredDocuments
     : filteredDocuments.slice(0, 10);
 
-    {showChoiceModal && selected && (
-  <div
-    className="document-modal-overlay"
-    onClick={() => setShowChoiceModal(false)}
-  >
-    <div
-      className="document-modal choice-modal"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <button
-        type="button"
-        className="document-modal-close"
-        onClick={() => setShowChoiceModal(false)}
-      >
-        ×
-      </button>
-
-      <h2>Choose First Time Jobseeker Form</h2>
-      <p className="document-modal-desc">
-        Please choose only one form to request.
-      </p>
-
-      <div className="choice-documents-grid">
-        {selected.choices.map((choice) => (
-          <button
-            key={choice.id}
-            type="button"
-            className="choice-document-card"
-            onClick={() => handleChooseSubDocument(choice)}
-          >
-            <img src={choice.images[0]} alt={choice.title} />
-            <h3>{choice.title}</h3>
-            <p>{choice.description}</p>
-          </button>
-        ))}
-      </div>
-    </div>
-  </div>
-)}
-
   const openModal = (document) => {
     setSelected(document);
     setActiveImageIndex(0);
     setZoomImage(null);
+    setShowChoiceModal(false);
   };
 
   const closeModal = () => {
     setSelected(null);
     setActiveImageIndex(0);
     setZoomImage(null);
+    setShowChoiceModal(false);
   };
 
-    const handleChoose = () => {
-    if (selected?.hasChoices && selected?.choices?.length > 0) {
-    setShowChoiceModal(true);
-    return;
-  }
+  const handleChoose = () => {
+    if (!selected) return;
+
+    if (selected.hasChoices && selected.choices.length > 0) {
+      setShowChoiceModal(true);
+      return;
+    }
+
+    navigate("/request", { state: { document: selected } });
+    closeModal();
+  };
 
   const handleChooseSubDocument = (choice) => {
-  const chosenDocument = {
-    ...selected,
-    title: choice.title,
-    images: choice.images,
-    desc: choice.description,
-    fullDesc: choice.description,
-    description: choice.description,
-    uploadLabel: choice.uploadLabel,
-    requirement: choice.uploadLabel,
-    fields: choice.fields || selected.fields || [],
-    selectedChoiceId: choice.id,
-    parentTitle: selected.title,
+    if (!selected) return;
+
+    const chosenDocument = {
+      ...selected,
+      title: choice.title,
+      images: choice.images || [],
+      desc: choice.description,
+      fullDesc: choice.description,
+      description: choice.description,
+      uploadLabel: choice.uploadLabel,
+      requirement: choice.uploadLabel,
+      fields: choice.fields || [],
+      selectedChoiceId: choice.id,
+      parentTitle: selected.title,
+    };
+
+    navigate("/request", { state: { document: chosenDocument } });
+    closeModal();
   };
-
-  navigate("/request", { state: { document: chosenDocument } });
-
-  setShowChoiceModal(false);
-  closeModal();
-};
-
-  navigate("/request", { state: { document: selected } });
-  closeModal();
-};
 
   const goPrevImage = () => {
     if (!selected?.images?.length) return;
@@ -344,7 +295,11 @@ const documents = useMemo(() => {
               </div>
 
               <div className="document-modal-actions">
-                <button type="button" className="cancel-btn" onClick={closeModal}>
+                <button
+                  type="button"
+                  className="cancel-btn"
+                  onClick={closeModal}
+                >
                   Cancel
                 </button>
 
@@ -361,45 +316,45 @@ const documents = useMemo(() => {
         )}
 
         {showChoiceModal && selected && (
-  <div
-    className="document-modal-overlay"
-    onClick={() => setShowChoiceModal(false)}
-  >
-    <div
-      className="document-modal choice-modal"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <button
-        type="button"
-        className="document-modal-close"
-        onClick={() => setShowChoiceModal(false)}
-      >
-        ×
-      </button>
-
-      <h2>Choose First Time Jobseeker Form</h2>
-
-      <p className="document-modal-desc">
-        Please choose only one form to request.
-      </p>
-
-      <div className="choice-documents-grid">
-        {selected.choices.map((choice) => (
-          <button
-            key={choice.id}
-            type="button"
-            className="choice-document-card"
-            onClick={() => handleChooseSubDocument(choice)}
+          <div
+            className="document-modal-overlay"
+            onClick={() => setShowChoiceModal(false)}
           >
-            <img src={choice.images[0]} alt={choice.title} />
-            <h3>{choice.title}</h3>
-            <p>{choice.description}</p>
-          </button>
-        ))}
-      </div>
-    </div>
-  </div>
-)}
+            <div
+              className="document-modal choice-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="document-modal-close"
+                onClick={() => setShowChoiceModal(false)}
+              >
+                ×
+              </button>
+
+              <h2>Choose First Time Jobseeker Form</h2>
+
+              <p className="document-modal-desc">
+                Please choose only one form to request.
+              </p>
+
+              <div className="choice-documents-grid">
+                {selected.choices.map((choice) => (
+                  <button
+                    key={choice.id}
+                    type="button"
+                    className="choice-document-card"
+                    onClick={() => handleChooseSubDocument(choice)}
+                  >
+                    <img src={choice.images[0]} alt={choice.title} />
+                    <h3>{choice.title}</h3>
+                    <p>{choice.description}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {zoomImage && (
           <div className="zoom-modal-overlay" onClick={() => setZoomImage(null)}>

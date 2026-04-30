@@ -1,11 +1,12 @@
 import { useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
-import "../css/citizen.css";
+import { useState, useEffect, useRef } from "react";
+import "../css/navbar.css";
 
-export default function Navbar() {
+export default function Userbar() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [open, setOpen] = useState(false);
+  const dropdownRef = useRef(null);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -13,6 +14,20 @@ export default function Navbar() {
     if (storedUser) {
       setUser(JSON.parse(storedUser));
     }
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, []);
 
   const handleLogout = () => {
@@ -23,47 +38,42 @@ export default function Navbar() {
 
   return (
     <nav className="navbar">
-      {/* LOGO */}
-      <div className="logo">
+      <div className="logo" onClick={() => navigate("/")}>
         <img className="img" src="/logo.png" alt="Logo" />
-        PaperTrail<br />
-        Digital Solutions
+        <span>
+          PaperTrail
+          <br />
+          Digital Solutions
+        </span>
       </div>
 
-      {/* RIGHT SIDE */}
       <div className="nav-actions">
         {!user ? (
-            <button
-            className="btn-signin"
-            onClick={() => navigate("/signin")}
-            >
+          <button className="btn-signin" onClick={() => navigate("/signin")}>
             Sign In
           </button>
         ) : (
-            <div className="profile-container">
-            <div
-              className="profile"
-              onClick={() => setOpen(!open)}
-              >
+          <div className="profile-container" ref={dropdownRef}>
+            <div className="profile" onClick={() => setOpen(!open)}>
               <div className="avatar">
-                {user?.name?.charAt(0) || "U"}
-                {/* <h1>{user?.name || "User"}</h1> */}
+                {user?.full_name?.charAt(0)?.toUpperCase() || "U"}
               </div>
             </div>
 
             {open && (
               <div className="dropdown">
-                  <div className="dropdown-header">
+                <div className="dropdown-header">
                   <p className="user-name">{user?.full_name}</p>
                   <small className="user-email">{user?.email}</small>
                 </div>
-                 <p onClick={() => navigate("/profile")}>
-                  My Profile
-                </p>
-                <p onClick={() => navigate("/request")}>
-                  Request Document
-                </p>
+
                 <hr />
+
+                <p onClick={() => navigate("/profile")}>My Profile</p>
+                <p onClick={() => navigate("/request")}>Request Document</p>
+
+                <hr />
+
                 <p className="logout" onClick={handleLogout}>
                   Logout
                 </p>
@@ -72,7 +82,6 @@ export default function Navbar() {
           </div>
         )}
       </div>
-      
     </nav>
   );
 }

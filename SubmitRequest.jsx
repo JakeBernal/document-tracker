@@ -4,7 +4,7 @@ export default function SubmitRequest() {
   const [documentType, setDocumentType] = useState('');
 
   const submitRequest = async () => {
-    const res = await fetch('http://localhost:5000/api/requests', {
+    const res = await fetch('http://localhost:5001/api/requests', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

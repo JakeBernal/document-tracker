@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import "../css/requestform.css";
 import { useLocation, useNavigate } from "react-router-dom";
 import { documentRequirements } from "../data/documentRequirements";
@@ -8,10 +8,10 @@ export default function RequestForm() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const selectedFromDocuments = location.state?.document;
+  const [user, setUser] = useState(null);
 
-  const initialDocName =
-    selectedFromDocuments?.title || "Barangay Clearance";
+  const selectedFromDocuments = location.state?.document;
+  const initialDocName = selectedFromDocuments?.title || "Barangay Clearance";
 
   const [selectedDocName, setSelectedDocName] = useState(initialDocName);
   const [formData, setFormData] = useState({});
@@ -19,6 +19,25 @@ export default function RequestForm() {
   const [message, setMessage] = useState("");
   const [viewDocument, setViewDocument] = useState(false);
   const [zoomImage, setZoomImage] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    const storedUserRaw = localStorage.getItem("user");
+
+    if (!storedUserRaw) {
+      navigate("/signin");
+      return;
+    }
+
+    try {
+      const storedUser = JSON.parse(storedUserRaw);
+      setUser(storedUser);
+    } catch (error) {
+      localStorage.removeItem("user");
+      localStorage.removeItem("token");
+      navigate("/signin");
+    }
+  }, [navigate]);
 
   const selectedDoc = useMemo(() => {
     if (
@@ -55,11 +74,10 @@ export default function RequestForm() {
   const documentNames = Object.keys(documentRequirements).filter((docName) => {
     const doc = documentRequirements[docName];
 
-    return (
-      doc.category === selectedDoc.category &&
-      !doc.hideFromList
-    );
+    return doc.category === selectedDoc.category && !doc.hideFromList;
   });
+
+  const isAdmin = user?.role === "admin";
 
   const handleChangeDoc = (e) => {
     setSelectedDocName(e.target.value);
@@ -98,9 +116,7 @@ export default function RequestForm() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const storedUser = JSON.parse(localStorage.getItem("user"));
-
-    if (!storedUser) {
+    if (!user) {
       alert("Please login first.");
       navigate("/signin");
       return;
@@ -114,9 +130,12 @@ export default function RequestForm() {
     }
 
     try {
+      setIsSubmitting(true);
+      setMessage("");
+
       const requestData = new FormData();
 
-      requestData.append("user_id", storedUser.id);
+      requestData.append("user_id", user.id);
       requestData.append("document_type_id", selectedDoc.id);
 
       requestData.append(
@@ -126,6 +145,7 @@ export default function RequestForm() {
           selected_form: selectedDoc.selectedChoiceId || null,
           parent_document: selectedDoc.parentTitle || null,
           category: selectedDoc.category,
+          submitted_by_role: user.role,
           fields: formData,
         })
       );
@@ -141,17 +161,27 @@ export default function RequestForm() {
       const data = await res.json();
 
       if (res.ok) {
-        setMessage("Request submitted successfully!");
+        setMessage(
+          isAdmin
+            ? "Document uploaded successfully!"
+            : "Request submitted successfully!"
+        );
 
         setTimeout(() => {
-          navigate("/citizen");
+          if (isAdmin) {
+            navigate("/admin");
+          } else {
+            navigate("/citizen");
+          }
         }, 1000);
       } else {
-        setMessage(data.message || "Failed to submit request.");
+        setMessage(data.message || "Failed to submit.");
       }
     } catch (error) {
       console.error("REQUEST SUBMIT ERROR:", error);
       setMessage("Cannot connect to server. Please check your backend.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -161,10 +191,11 @@ export default function RequestForm() {
 
       <section className="request-page">
         <div className="request-header">
-          <h1>Document Request</h1>
+          <h1>{isAdmin ? "Upload Document" : "Document Request"}</h1>
           <p>
-            Please complete the required information and upload the necessary
-            supporting documents.
+            {isAdmin
+              ? "Upload and submit document files for processing."
+              : "Please complete the required information and upload the necessary supporting documents."}
           </p>
         </div>
 
@@ -230,6 +261,10 @@ export default function RequestForm() {
               <p>
                 <strong>Required Attachment:</strong> {selectedDoc.uploadLabel}
               </p>
+              <p>
+                <strong>Account Role:</strong>{" "}
+                {isAdmin ? "Admin" : "Citizen"}
+              </p>
             </div>
 
             <button
@@ -242,7 +277,7 @@ export default function RequestForm() {
           </div>
 
           <div className="request-right">
-            <h2>Applicant Information</h2>
+            <h2>{isAdmin ? "Upload Information" : "Applicant Information"}</h2>
 
             {message && <p className="form-message">{message}</p>}
 
@@ -288,10 +323,24 @@ export default function RequestForm() {
                   accept="image/*,.pdf"
                   onChange={(e) => setFile(e.target.files[0])}
                 />
+
+                {file && (
+                  <p className="selected-parent-note">
+                    Selected file: <strong>{file.name}</strong>
+                  </p>
+                )}
               </div>
 
-              <button type="submit" className="primary-btn">
-                Submit Request
+              <button
+                type="submit"
+                className="primary-btn"
+                disabled={isSubmitting}
+              >
+                {isSubmitting
+                  ? "Submitting..."
+                  : isAdmin
+                  ? "Upload Document"
+                  : "Submit Request"}
               </button>
             </form>
           </div>
@@ -324,7 +373,7 @@ export default function RequestForm() {
                   <div className="whole-document-page" key={index}>
                     <img
                       src={img}
-                      alt={selectedDocName}
+                      alt={`${selectedDocName} page ${index + 1}`}
                       onClick={() => setZoomImage(img)}
                     />
                   </div>

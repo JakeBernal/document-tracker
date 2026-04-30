@@ -1,12 +1,16 @@
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 const db = require("./config/db");
 const requestRoutes = require("./routes/requestRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 
+// ================= CORS =================
 const corsOptions = {
   origin: "http://localhost:5173",
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -14,21 +18,23 @@ const corsOptions = {
   credentials: true,
 };
 
-/* ================= MIDDLEWARE ================= */
 app.use(cors(corsOptions));
 app.use(express.json());
 
+// ================= SERVE UPLOADS =================
+// This makes uploaded files accessible at http://localhost:5001/uploads/filename
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// ================= LOGGING =================
 app.use((req, res, next) => {
-  console.log("HIT:", req.method, req.url);
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
 });
 
-/* ================= AUTH ROUTES ================= */
+// ================= AUTH ROUTES =================
 
 // REGISTER
 app.post("/api/register", async (req, res) => {
-  console.log("REGISTER BODY:", req.body);
-
   const { full_name, email, password } = req.body;
 
   if (!full_name || !email || !password) {
@@ -43,80 +49,98 @@ app.post("/api/register", async (req, res) => {
       [full_name, email, hashed, "citizen"],
       (err, result) => {
         if (err) {
-          console.log("REGISTER ERROR:", err);
-
           if (err.code === "ER_DUP_ENTRY") {
             return res.status(400).json({ message: "Email already exists" });
           }
-
+          console.error("REGISTER ERROR:", err);
           return res.status(500).json({ message: "Database error" });
         }
 
-        return res.status(201).json({
+        res.status(201).json({
           message: "User registered successfully",
           userId: result.insertId,
         });
       }
     );
   } catch (err) {
-    console.log("SERVER ERROR:", err);
-    return res.status(500).json({ message: "Server error" });
+    console.error("SERVER ERROR:", err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
 // LOGIN
 app.post("/api/login", (req, res) => {
-  console.log("LOGIN BODY:", req.body);
-
   const { email, password } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ message: "Email and password are required" });
   }
 
-  db.query("SELECT * FROM users WHERE email = ?", [email], async (err, results) => {
-    if (err) {
-      console.log("LOGIN ERROR:", err);
-      return res.status(500).json({ message: "Database error" });
-    }
-
-    if (results.length === 0) {
-      return res.status(401).json({ message: "User not found" });
-    }
-
-    try {
-      const user = results[0];
-      const match = await bcrypt.compare(password, user.password);
-
-      if (!match) {
-        return res.status(401).json({ message: "Wrong password" });
+  db.query(
+    "SELECT * FROM users WHERE email = ?",
+    [email],
+    async (err, results) => {
+      if (err) {
+        console.error("LOGIN ERROR:", err);
+        return res.status(500).json({ message: "Database error" });
       }
 
-      return res.status(200).json({
-        message: "Login success",
-        user: {
-          id: user.id,
-          full_name: user.full_name,
-          email: user.email,
-          role: user.role,
-        },
-      });
-    } catch (compareErr) {
-      console.log("BCRYPT COMPARE ERROR:", compareErr);
-      return res.status(500).json({ message: "Server error" });
+      if (results.length === 0) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      try {
+        const user = results[0];
+        const match = await bcrypt.compare(password, user.password);
+
+        if (!match) {
+          return res.status(401).json({ message: "Wrong password" });
+        }
+
+        const token = jwt.sign(
+          {
+            id: user.id,
+            full_name: user.full_name,
+            email: user.email,
+            role: user.role,
+          },
+          process.env.JWT_SECRET,
+          { expiresIn: "2h" }
+        );
+
+        res.status(200).json({
+          message: "Login success",
+          user: {
+            id: user.id,
+            full_name: user.full_name,
+            email: user.email,
+            role: user.role,
+          },
+          token,
+        });
+      } catch (compareErr) {
+        console.error("BCRYPT COMPARE ERROR:", compareErr);
+        res.status(500).json({ message: "Server error" });
+      }
     }
-  });
+  );
 });
 
-/* ================= OTHER ROUTES ================= */
+// ================= REQUEST ROUTES =================
 app.use("/api", requestRoutes);
 
-/* ================= 404 HANDLER ================= */
+// ================= 404 HANDLER =================
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
 
-/* ================= START SERVER ================= */
+// ================= ERROR HANDLER =================
+app.use((err, req, res, next) => {
+  console.error("UNCAUGHT ERROR:", err);
+  res.status(500).json({ message: "Internal server error" });
+});
+
+// ================= START SERVER =================
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

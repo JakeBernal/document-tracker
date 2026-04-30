@@ -1,43 +1,34 @@
-import jwt from "jsonwebtoken";
+const jwt = require("jsonwebtoken");
 
-export const verifyToken = (req, res, next) => {
+const verifyToken = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({
-        message: "No token provided.",
-      });
+      return res.status(401).json({ message: "No token provided." });
     }
 
     const token = authHeader.split(" ")[1];
-
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     req.user = decoded;
-
     next();
   } catch (error) {
-    console.error("VERIFY TOKEN ERROR:", error);
-
-    return res.status(401).json({
-      message: "Invalid or expired token.",
-    });
+    console.error("VERIFY TOKEN ERROR:", error.message);
+    return res.status(401).json({ message: "Invalid or expired token." });
   }
 };
 
-export const verifyAdmin = (req, res, next) => {
+const verifyAdmin = (req, res, next) => {
   if (!req.user) {
-    return res.status(401).json({
-      message: "Unauthorized.",
-    });
+    return res.status(401).json({ message: "Unauthorized." });
   }
 
   if (req.user.role !== "admin") {
-    return res.status(403).json({
-      message: "Admin access only.",
-    });
+    return res.status(403).json({ message: "Admin access only." });
   }
 
   next();
 };
+
+module.exports = { verifyToken, verifyAdmin };

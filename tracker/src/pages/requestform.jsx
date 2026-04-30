@@ -14,9 +14,9 @@ export default function RequestForm() {
   const initialDocName = selectedFromDocuments?.title || "Barangay Clearance";
 
   const [selectedDocName, setSelectedDocName] = useState(initialDocName);
-  const [formData, setFormData] = useState({});
-  const [file, setFile] = useState(null);
-  const [message, setMessage] = useState("");
+  const [formData, setFormData]   = useState({});
+  const [file, setFile]           = useState(null);
+  const [message, setMessage]     = useState("");
   const [viewDocument, setViewDocument] = useState(false);
   const [zoomImage, setZoomImage] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -30,8 +30,7 @@ export default function RequestForm() {
     }
 
     try {
-      const storedUser = JSON.parse(storedUserRaw);
-      setUser(storedUser);
+      setUser(JSON.parse(storedUserRaw));
     } catch (error) {
       localStorage.removeItem("user");
       localStorage.removeItem("token");
@@ -45,37 +44,29 @@ export default function RequestForm() {
       selectedFromDocuments?.parentTitle
     ) {
       const parentDoc = documentRequirements[selectedFromDocuments.parentTitle];
-
       return {
         ...parentDoc,
         ...selectedFromDocuments,
-        category: parentDoc?.category || selectedFromDocuments.category,
-        fee: parentDoc?.fee || selectedFromDocuments.fee,
-        time: parentDoc?.time || selectedFromDocuments.time,
-        uploadLabel:
-          selectedFromDocuments.uploadLabel ||
-          selectedFromDocuments.requirement ||
-          parentDoc?.uploadLabel,
-        fields: selectedFromDocuments.fields || parentDoc?.fields || [],
-        images: selectedFromDocuments.images || [],
+        category:    parentDoc?.category    || selectedFromDocuments.category,
+        fee:         parentDoc?.fee         || selectedFromDocuments.fee,
+        time:        parentDoc?.time        || selectedFromDocuments.time,
+        uploadLabel: selectedFromDocuments.uploadLabel || parentDoc?.uploadLabel,
+        fields:      selectedFromDocuments.fields || parentDoc?.fields || [],
+        images:      selectedFromDocuments.images || [],
       };
     }
 
-    if (documentRequirements[selectedDocName]) {
-      return documentRequirements[selectedDocName];
-    }
-
-    return documentRequirements["Barangay Clearance"];
+    return documentRequirements[selectedDocName] || documentRequirements["Barangay Clearance"];
   }, [selectedDocName, selectedFromDocuments]);
 
-  const activeImages = selectedDoc?.images || [];
-  const previewImage = activeImages[0];
+  const activeImages  = selectedDoc?.images || [];
+  const previewImage  = activeImages[0];
 
-  const documentNames = Object.keys(documentRequirements).filter((docName) => {
-    const doc = documentRequirements[docName];
-
-    return doc.category === selectedDoc.category && !doc.hideFromList;
-  });
+  const documentNames = Object.keys(documentRequirements).filter(
+    (docName) =>
+      documentRequirements[docName].category === selectedDoc.category &&
+      !documentRequirements[docName].hideFromList
+  );
 
   const isAdmin = user?.role === "admin";
 
@@ -90,17 +81,12 @@ export default function RequestForm() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const validateForm = () => {
     for (const field of selectedDoc.fields || []) {
       const value = formData[field.name];
-
       if (field.required && (!value || String(value).trim() === "")) {
         return `Please fill in ${field.label}.`;
       }
@@ -123,7 +109,6 @@ export default function RequestForm() {
     }
 
     const validationError = validateForm();
-
     if (validationError) {
       setMessage(validationError);
       return;
@@ -133,20 +118,28 @@ export default function RequestForm() {
       setIsSubmitting(true);
       setMessage("");
 
+      // ✅ Get token from localStorage
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        navigate("/signin");
+        return;
+      }
+
+      // Use FormData for multipart (file upload)
       const requestData = new FormData();
 
-      requestData.append("user_id", user.id);
       requestData.append("document_type_id", selectedDoc.id);
 
+      // Send form fields as JSON string in "notes"
       requestData.append(
         "notes",
         JSON.stringify({
-          document_name: selectedDocName,
-          selected_form: selectedDoc.selectedChoiceId || null,
+          document_name:   selectedDocName,
+          selected_form:   selectedDoc.selectedChoiceId || null,
           parent_document: selectedDoc.parentTitle || null,
-          category: selectedDoc.category,
-          submitted_by_role: user.role,
-          fields: formData,
+          category:        selectedDoc.category,
+          fields:          formData,
         })
       );
 
@@ -154,7 +147,10 @@ export default function RequestForm() {
 
       const res = await fetch("http://localhost:5001/api/requests", {
         method: "POST",
-        credentials: "include",
+        headers: {
+          // ✅ Authorization header — DO NOT add Content-Type with FormData
+          Authorization: `Bearer ${token}`,
+        },
         body: requestData,
       });
 
@@ -168,11 +164,7 @@ export default function RequestForm() {
         );
 
         setTimeout(() => {
-          if (isAdmin) {
-            navigate("/admin");
-          } else {
-            navigate("/citizen");
-          }
+          navigate(isAdmin ? "/admin" : "/citizen");
         }, 1000);
       } else {
         setMessage(data.message || "Failed to submit.");
@@ -226,14 +218,9 @@ export default function RequestForm() {
                   className="request-preview-full-img"
                 />
               ) : (
-                <div className="no-preview-box">
-                  No document preview available
-                </div>
+                <div className="no-preview-box">No document preview available</div>
               )}
-
-              <span className="preview-click-label">
-                Click image to view
-              </span>
+              <span className="preview-click-label">Click image to view</span>
             </div>
 
             <button
@@ -246,25 +233,12 @@ export default function RequestForm() {
             </button>
 
             <div className="document-info">
-              <p>
-                <strong>Document Name:</strong> {selectedDocName}
-              </p>
-              <p>
-                <strong>Category:</strong> {selectedDoc.category}
-              </p>
-              <p>
-                <strong>Processing Fee:</strong> {selectedDoc.fee}
-              </p>
-              <p>
-                <strong>Processing Time:</strong> {selectedDoc.time}
-              </p>
-              <p>
-                <strong>Required Attachment:</strong> {selectedDoc.uploadLabel}
-              </p>
-              <p>
-                <strong>Account Role:</strong>{" "}
-                {isAdmin ? "Admin" : "Citizen"}
-              </p>
+              <p><strong>Document Name:</strong> {selectedDocName}</p>
+              <p><strong>Category:</strong> {selectedDoc.category}</p>
+              <p><strong>Processing Fee:</strong> {selectedDoc.fee}</p>
+              <p><strong>Processing Time:</strong> {selectedDoc.time}</p>
+              <p><strong>Required Attachment:</strong> {selectedDoc.uploadLabel}</p>
+              <p><strong>Account Role:</strong> {isAdmin ? "Admin" : "Citizen"}</p>
             </div>
 
             <button
@@ -297,9 +271,7 @@ export default function RequestForm() {
                 <div className="form-group" key={field.name}>
                   <label>
                     {field.label}
-                    {field.required && (
-                      <span className="required-star"> *</span>
-                    )}
+                    {field.required && <span className="required-star"> *</span>}
                   </label>
 
                   <input
@@ -364,9 +336,7 @@ export default function RequestForm() {
               </button>
 
               <h2>{selectedDocName}</h2>
-              <p className="whole-document-subtitle">
-                Click the form image to zoom.
-              </p>
+              <p className="whole-document-subtitle">Click the form image to zoom.</p>
 
               <div className="whole-document-images">
                 {activeImages.filter(Boolean).map((img, index) => (

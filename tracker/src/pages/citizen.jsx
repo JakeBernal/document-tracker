@@ -15,14 +15,11 @@ export default function UserDashboard() {
     const storedUserRaw = localStorage.getItem("user");
     const token = localStorage.getItem("token");
 
-    if (!storedUserRaw || !token) {
-      return null;
-    }
+    if (!storedUserRaw || !token) return null;
 
     try {
       return JSON.parse(storedUserRaw);
     } catch (error) {
-      console.error("Invalid user data:", error);
       localStorage.removeItem("user");
       localStorage.removeItem("token");
       return null;
@@ -41,6 +38,7 @@ export default function UserDashboard() {
         return;
       }
 
+      // No user_id in URL — backend reads it from the JWT token
       const res = await fetch("http://localhost:5001/api/requests/my", {
         method: "GET",
         headers: {
@@ -49,7 +47,6 @@ export default function UserDashboard() {
       });
 
       const data = await res.json();
-
       console.log("MY REQUESTS RESPONSE:", data);
 
       if (!res.ok) {
@@ -87,67 +84,42 @@ export default function UserDashboard() {
 
   const getStatusClass = (status) => {
     switch (status) {
-      case "Pending":
-        return "status pending";
-      case "Processing":
-        return "status processing";
-      case "Needs More Info":
-        return "status needs-info";
-      case "Ready for Pickup":
-        return "status ready";
+      case "Pending":        return "status pending";
+      case "Processing":     return "status processing";
+      case "Needs More Info":return "status needs-info";
+      case "Ready for Pickup": return "status ready";
       case "Completed":
-      case "Approved":
-        return "status approved";
-      case "Rejected":
-        return "status rejected";
-      default:
-        return "status";
+      case "Approved":       return "status approved";
+      case "Rejected":       return "status rejected";
+      default:               return "status";
     }
   };
 
   const getPaymentClass = (paymentStatus) => {
     switch (paymentStatus) {
-      case "Paid":
-        return "payment paid";
-      case "Waived":
-        return "payment waived";
-      case "Unpaid":
-        return "payment unpaid";
-      default:
-        return "payment";
+      case "Paid":    return "payment paid";
+      case "Waived":  return "payment waived";
+      case "Unpaid":  return "payment unpaid";
+      default:        return "payment";
     }
   };
 
   const getDocumentName = (request) => {
-    if (request.document_name) {
-      return request.document_name;
-    }
+    if (request.document_name) return request.document_name;
 
     const formData = request.form_data;
-
-    if (formData?.document_name) {
-      return formData.document_name;
-    }
-
-    if (formData?.parent_document) {
-      return formData.parent_document;
-    }
+    if (formData?.document_name)  return formData.document_name;
+    if (formData?.parent_document) return formData.parent_document;
 
     return "Document Request";
   };
 
   const getRequestDate = (request) => {
     const rawDate = request.created_at || request.updated_at;
-
-    if (!rawDate) {
-      return "—";
-    }
+    if (!rawDate) return "—";
 
     const date = new Date(rawDate);
-
-    if (Number.isNaN(date.getTime())) {
-      return rawDate;
-    }
+    if (Number.isNaN(date.getTime())) return rawDate;
 
     return date.toLocaleDateString("en-PH", {
       year: "numeric",
@@ -156,40 +128,23 @@ export default function UserDashboard() {
     });
   };
 
-  const formatAmount = (amount) => {
-    const numericAmount = Number(amount || 0);
-
-    return numericAmount.toLocaleString("en-PH", {
+  const formatAmount = (amount) =>
+    Number(amount || 0).toLocaleString("en-PH", {
       style: "currency",
       currency: "PHP",
     });
-  };
 
   const getFileUrl = (filePath) => {
-    if (!filePath) {
-      return null;
-    }
-
+    if (!filePath) return null;
     const cleanPath = String(filePath).replaceAll("\\", "/");
-
-    if (cleanPath.startsWith("http")) {
-      return cleanPath;
-    }
-
+    if (cleanPath.startsWith("http")) return cleanPath;
     return `http://localhost:5001/${cleanPath}`;
   };
 
-  const totalRequests = requests.length;
-
-  const pendingRequests = requests.filter(
-    (request) => request.status === "Pending"
-  ).length;
-
+  const totalRequests    = requests.length;
+  const pendingRequests  = requests.filter((r) => r.status === "Pending").length;
   const approvedRequests = requests.filter(
-    (request) =>
-      request.status === "Approved" ||
-      request.status === "Completed" ||
-      request.status === "Ready for Pickup"
+    (r) => r.status === "Approved" || r.status === "Completed" || r.status === "Ready for Pickup"
   ).length;
 
   return (
@@ -217,12 +172,10 @@ export default function UserDashboard() {
             <h3>{totalRequests}</h3>
             <p>Total Requests</p>
           </div>
-
           <div className="card">
             <h3>{pendingRequests}</h3>
             <p>Pending</p>
           </div>
-
           <div className="card">
             <h3>{approvedRequests}</h3>
             <p>Approved</p>
@@ -291,11 +244,7 @@ export default function UserDashboard() {
                           <td>{formatAmount(request.amount_due)}</td>
 
                           <td>
-                            <span
-                              className={getPaymentClass(
-                                request.payment_status
-                              )}
-                            >
+                            <span className={getPaymentClass(request.payment_status)}>
                               {request.payment_status || "Unpaid"}
                             </span>
 

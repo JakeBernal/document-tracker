@@ -14,12 +14,13 @@ export default function RequestForm() {
   const initialDocName = selectedFromDocuments?.title || "Barangay Clearance";
 
   const [selectedDocName, setSelectedDocName] = useState(initialDocName);
-  const [formData, setFormData]   = useState({});
-  const [file, setFile]           = useState(null);
-  const [message, setMessage]     = useState("");
+  const [formData, setFormData] = useState({});
+  const [file, setFile] = useState(null);
+  const [fileName, setFileName] = useState("");
+  const [message, setMessage] = useState("");
   const [viewDocument, setViewDocument] = useState(false);
   const [zoomImage, setZoomImage] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("");
 
   useEffect(() => {
     const storedUserRaw = localStorage.getItem("user");
@@ -44,36 +45,61 @@ export default function RequestForm() {
       selectedFromDocuments?.parentTitle
     ) {
       const parentDoc = documentRequirements[selectedFromDocuments.parentTitle];
+
       return {
         ...parentDoc,
         ...selectedFromDocuments,
-        category:    parentDoc?.category    || selectedFromDocuments.category,
-        fee:         parentDoc?.fee         || selectedFromDocuments.fee,
-        time:        parentDoc?.time        || selectedFromDocuments.time,
-        uploadLabel: selectedFromDocuments.uploadLabel || parentDoc?.uploadLabel,
-        fields:      selectedFromDocuments.fields || parentDoc?.fields || [],
-        images:      selectedFromDocuments.images || [],
+        category: parentDoc?.category || selectedFromDocuments.category,
+        fee: parentDoc?.fee || selectedFromDocuments.fee,
+        time: parentDoc?.time || selectedFromDocuments.time,
+        uploadLabel:
+          selectedFromDocuments.uploadLabel || parentDoc?.uploadLabel,
+        fields: selectedFromDocuments.fields || parentDoc?.fields || [],
+        images: selectedFromDocuments.images || [],
       };
     }
 
-    return documentRequirements[selectedDocName] || documentRequirements["Barangay Clearance"];
+    return (
+      documentRequirements[selectedDocName] ||
+      documentRequirements["Barangay Clearance"]
+    );
   }, [selectedDocName, selectedFromDocuments]);
 
-  const activeImages  = selectedDoc?.images || [];
-  const previewImage  = activeImages[0];
+  const activeImages = selectedDoc?.images || [];
+  const previewImage = activeImages[0];
 
-  const documentNames = Object.keys(documentRequirements).filter(
-    (docName) =>
-      documentRequirements[docName].category === selectedDoc.category &&
-      !documentRequirements[docName].hideFromList
-  );
+  const documentNames = Object.keys(documentRequirements).filter((docName) => {
+    const doc = documentRequirements[docName];
+
+    return doc.category === selectedDoc.category && !doc.hideFromList;
+  });
 
   const isAdmin = user?.role === "admin";
+
+  const paymentOptions = [
+    {
+      value: "GCash",
+      label: "GCash",
+      description: "Pay using GCash on the checkout page.",
+    },
+    {
+      value: "PayMaya",
+      label: "PayMaya",
+      description: "Pay using PayMaya on the checkout page.",
+    },
+    {
+      value: "Onsite Payment",
+      label: "Onsite Payment",
+      description: "Pay directly at the Barangay or LGU office.",
+    },
+  ];
 
   const handleChangeDoc = (e) => {
     setSelectedDocName(e.target.value);
     setFormData({});
     setFile(null);
+    setFileName("");
+    setPaymentMethod("");
     setMessage("");
     setViewDocument(false);
     setZoomImage(null);
@@ -81,12 +107,24 @@ export default function RequestForm() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleAttachmentChange = (e) => {
+    const selectedFile = e.target.files[0];
+
+    setFile(selectedFile || null);
+    setFileName(selectedFile ? selectedFile.name : "");
   };
 
   const validateForm = () => {
     for (const field of selectedDoc.fields || []) {
       const value = formData[field.name];
+
       if (field.required && (!value || String(value).trim() === "")) {
         return `Please fill in ${field.label}.`;
       }
@@ -96,85 +134,68 @@ export default function RequestForm() {
       return `Please upload: ${selectedDoc.uploadLabel}.`;
     }
 
+    if (!isAdmin && !paymentMethod) {
+      return "Please choose a payment method.";
+    }
+
     return "";
   };
 
-  const handleSubmit = async (e) => {
+  const getAmountDue = () => {
+    if (!selectedDoc?.fee) return "0.00";
+
+    if (selectedDoc.fee === "Free") return "0.00";
+    if (selectedDoc.fee === "Varies") return "Varies";
+
+    return String(selectedDoc.fee).replace("₱", "").trim();
+  };
+
+  const handleSubmit = (e) => {
     e.preventDefault();
 
     if (!user) {
-      alert("Please login first.");
       navigate("/signin");
       return;
     }
 
     const validationError = validateForm();
+
     if (validationError) {
       setMessage(validationError);
       return;
     }
 
-    try {
-      setIsSubmitting(true);
-      setMessage("");
+    const checkoutData = {
+      user,
+      selectedDoc,
+      selectedDocName,
+      formData,
+      file,
+      fileName,
+      paymentMethod: isAdmin ? "None" : paymentMethod,
+      amountDue: getAmountDue(),
+      category: selectedDoc.category,
+      processingTime: selectedDoc.time,
+      requiredAttachment: selectedDoc.uploadLabel,
+    };
 
-      // ✅ Get token from localStorage
-      const token = localStorage.getItem("token");
+    sessionStorage.setItem(
+      "checkoutDraft",
+      JSON.stringify({
+        selectedDocName,
+        formData,
+        fileName,
+        paymentMethod: isAdmin ? "None" : paymentMethod,
+        amountDue: getAmountDue(),
+        category: selectedDoc.category,
+        processingTime: selectedDoc.time,
+        requiredAttachment: selectedDoc.uploadLabel,
+      })
+    );
 
-      if (!token) {
-        navigate("/signin");
-        return;
-      }
-
-      // Use FormData for multipart (file upload)
-      const requestData = new FormData();
-
-      requestData.append("document_type_id", selectedDoc.id);
-
-      // Send form fields as JSON string in "notes"
-      requestData.append(
-        "notes",
-        JSON.stringify({
-          document_name:   selectedDocName,
-          selected_form:   selectedDoc.selectedChoiceId || null,
-          parent_document: selectedDoc.parentTitle || null,
-          category:        selectedDoc.category,
-          fields:          formData,
-        })
-      );
-
-      requestData.append("file", file);
-
-      const res = await fetch("http://localhost:5001/api/requests", {
-        method: "POST",
-        headers: {
-          // ✅ Authorization header — DO NOT add Content-Type with FormData
-          Authorization: `Bearer ${token}`,
-        },
-        body: requestData,
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        setMessage(
-          isAdmin
-            ? "Document uploaded successfully!"
-            : "Request submitted successfully!"
-        );
-
-        setTimeout(() => {
-          navigate(isAdmin ? "/admin" : "/citizen");
-        }, 1000);
-      } else {
-        setMessage(data.message || "Failed to submit.");
-      }
-    } catch (error) {
-      console.error("REQUEST SUBMIT ERROR:", error);
-      setMessage("Cannot connect to server. Please check your backend.");
-    } finally {
-      setIsSubmitting(false);
-    }
+    navigate("/checkout", {
+      state: checkoutData,
+    });
   };
 
   return (
@@ -218,8 +239,11 @@ export default function RequestForm() {
                   className="request-preview-full-img"
                 />
               ) : (
-                <div className="no-preview-box">No document preview available</div>
+                <div className="no-preview-box">
+                  No document preview available
+                </div>
               )}
+
               <span className="preview-click-label">Click image to view</span>
             </div>
 
@@ -233,12 +257,24 @@ export default function RequestForm() {
             </button>
 
             <div className="document-info">
-              <p><strong>Document Name:</strong> {selectedDocName}</p>
-              <p><strong>Category:</strong> {selectedDoc.category}</p>
-              <p><strong>Processing Fee:</strong> {selectedDoc.fee}</p>
-              <p><strong>Processing Time:</strong> {selectedDoc.time}</p>
-              <p><strong>Required Attachment:</strong> {selectedDoc.uploadLabel}</p>
-              <p><strong>Account Role:</strong> {isAdmin ? "Admin" : "Citizen"}</p>
+              <p>
+                <strong>Document Name:</strong> {selectedDocName}
+              </p>
+              <p>
+                <strong>Category:</strong> {selectedDoc.category}
+              </p>
+              <p>
+                <strong>Processing Fee:</strong> {selectedDoc.fee}
+              </p>
+              <p>
+                <strong>Processing Time:</strong> {selectedDoc.time}
+              </p>
+              <p>
+                <strong>Required Attachment:</strong> {selectedDoc.uploadLabel}
+              </p>
+              <p>
+                <strong>Account Role:</strong> {isAdmin ? "Admin" : "Citizen"}
+              </p>
             </div>
 
             <button
@@ -271,7 +307,9 @@ export default function RequestForm() {
                 <div className="form-group" key={field.name}>
                   <label>
                     {field.label}
-                    {field.required && <span className="required-star"> *</span>}
+                    {field.required && (
+                      <span className="required-star"> *</span>
+                    )}
                   </label>
 
                   <input
@@ -293,26 +331,45 @@ export default function RequestForm() {
                 <input
                   type="file"
                   accept="image/*,.pdf"
-                  onChange={(e) => setFile(e.target.files[0])}
+                  onChange={handleAttachmentChange}
                 />
 
-                {file && (
+                {fileName && (
                   <p className="selected-parent-note">
-                    Selected file: <strong>{file.name}</strong>
+                    Selected file: <strong>{fileName}</strong>
                   </p>
                 )}
-              </div> 
-              
-              <button
-                type="submit"
-                className="primary-btn"
-                disabled={isSubmitting}
-              >
-                {isSubmitting
-                  ? "Submitting..."
-                  : isAdmin
-                  ? "Upload Document"
-                  : "Submit Request"}
+              </div>
+
+              {!isAdmin && (
+                <div className="form-group">
+                  <label>
+                    Type of Payment
+                    <span className="required-star"> *</span>
+                  </label>
+
+                  <div className="payment-options">
+                    {paymentOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={
+                          paymentMethod === option.value
+                            ? "payment-option active"
+                            : "payment-option"
+                        }
+                        onClick={() => setPaymentMethod(option.value)}
+                      >
+                        <strong>{option.label}</strong>
+                        <span>{option.description}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button type="submit" className="primary-btn">
+                Continue to Checkout
               </button>
             </form>
           </div>
@@ -336,11 +393,14 @@ export default function RequestForm() {
               </button>
 
               <h2>{selectedDocName}</h2>
-              <p className="whole-document-subtitle">Click the form image to zoom.</p>
+              <p className="whole-document-subtitle">
+                Click the form image to zoom.
+              </p>
 
               <div className="whole-document-images">
                 {activeImages.filter(Boolean).map((img, index) => (
                   <div className="whole-document-page" key={index}>
+                    <p>Page {index + 1}</p>
                     <img
                       src={img}
                       alt={`${selectedDocName} page ${index + 1}`}

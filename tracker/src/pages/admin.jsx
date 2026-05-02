@@ -8,8 +8,13 @@ export default function Admin() {
 
   const [user, setUser] = useState(null);
   const [requests, setRequests] = useState([]);
+  const [pickupInputs, setPickupInputs] = useState({});
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+
+  const isAdminUser = (storedUser) => {
+    return storedUser?.role === "admin" || storedUser?.role === "superadmin";
+  };
 
   const getStoredUser = () => {
     const storedUserRaw = localStorage.getItem("user");
@@ -49,8 +54,6 @@ export default function Admin() {
 
       const data = await res.json();
 
-      console.log("ADMIN REQUESTS RESPONSE:", data);
-
       if (!res.ok) {
         setRequests([]);
         setMessage(data.message || "Failed to fetch admin requests.");
@@ -71,18 +74,18 @@ export default function Admin() {
     const storedUser = getStoredUser();
 
     if (!storedUser) {
-      navigate("/signin");
+      navigate("/signin", { replace: true });
       return;
     }
 
-    if (storedUser.role !== "admin") {
-      navigate("/citizen");
+    if (!isAdminUser(storedUser)) {
+      navigate("/citizen", { replace: true });
       return;
     }
 
     setUser(storedUser);
     fetchRequests();
-  }, [navigate]);
+  }, []);
 
   const updateStatus = async (requestId, newStatus) => {
     try {
@@ -121,7 +124,7 @@ export default function Admin() {
       const token = localStorage.getItem("token");
 
       const method = window.prompt(
-        "Payment method: Cash, GCash, Bank Transfer, Other",
+        "Payment method: Cash, GCash, PayMaya, Bank Transfer, Other",
         request.payment_method && request.payment_method !== "None"
           ? request.payment_method
           : "Cash"
@@ -131,7 +134,7 @@ export default function Admin() {
         return;
       }
 
-      const allowedMethods = ["Cash", "GCash", "Bank Transfer", "Other"];
+      const allowedMethods = ["Cash", "GCash", "PayMaya", "Bank Transfer", "Other"];
 
       if (!allowedMethods.includes(method)) {
         alert("Invalid payment method.");
@@ -139,13 +142,13 @@ export default function Admin() {
       }
 
       const reference = window.prompt(
-        "Payment reference / OR number / GCash ref no. Optional:",
+        "Payment reference / OR number / GCash / PayMaya ref no. Optional:",
         request.payment_reference || ""
       );
 
       const amountInput = window.prompt(
         "Amount paid:",
-        Number(request.amount_due || 0).toFixed(2)
+        Number(request.total_amount || request.amount_due || 0).toFixed(2)
       );
 
       if (amountInput === null) {
@@ -172,6 +175,10 @@ export default function Admin() {
             payment_method: method,
             payment_reference: reference || null,
             amount_due: amountDue,
+            document_fee: request.document_fee || 0,
+            system_fee: request.system_fee || 0,
+            discount_amount: request.discount_amount || 0,
+            total_amount: amountDue,
           }),
         }
       );
@@ -186,6 +193,58 @@ export default function Admin() {
       await fetchRequests();
     } catch (error) {
       console.error("UPDATE PAYMENT ERROR:", error);
+      alert("Cannot connect to server.");
+    }
+  };
+
+  const updatePickupInput = (requestId, field, value) => {
+    setPickupInputs((prev) => ({
+      ...prev,
+      [requestId]: {
+        ...prev[requestId],
+        [field]: value,
+      },
+    }));
+  };
+
+  const setPickupSchedule = async (requestId) => {
+    const pickupDate = pickupInputs[requestId]?.pickup_date;
+    const pickupTime = pickupInputs[requestId]?.pickup_time;
+
+    if (!pickupDate || !pickupTime) {
+      alert("Please select pickup date and pickup time.");
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+
+      const res = await fetch(
+        `http://localhost:5001/api/admin/requests/${requestId}/appointment`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            pickup_date: pickupDate,
+            pickup_time: pickupTime,
+          }),
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.message || "Failed to set pickup schedule.");
+        return;
+      }
+
+      alert(data.message || "Pickup schedule saved.");
+      await fetchRequests();
+    } catch (error) {
+      console.error("SET PICKUP SCHEDULE ERROR:", error);
       alert("Cannot connect to server.");
     }
   };
@@ -242,6 +301,23 @@ export default function Admin() {
     });
   };
 
+  const formatTime = (rawTime) => {
+    if (!rawTime) {
+      return "—";
+    }
+
+    const [hour, minute] = String(rawTime).split(":");
+    const date = new Date();
+
+    date.setHours(Number(hour || 0));
+    date.setMinutes(Number(minute || 0));
+
+    return date.toLocaleTimeString("en-PH", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
   const formatAmount = (amount) => {
     return Number(amount || 0).toLocaleString("en-PH", {
       style: "currency",
@@ -263,15 +339,46 @@ export default function Admin() {
     return `http://localhost:5001/${cleanPath}`;
   };
 
-  const getApplicantDetails = (request) => {
-    const applicant = request.form_data?.applicant;
+  const parseFormData = (request) => {
+    if (!request.form_data) {
+      return {};
+    }
 
-    if (!applicant || typeof applicant !== "object") {
+    if (typeof request.form_data === "object") {
+      return request.form_data;
+    }
+
+    try {
+      return JSON.parse(request.form_data);
+    } catch {
+      return {};
+    }
+  };
+
+  const getApplicantDetails = (request) => {
+    const parsed = parseFormData(request);
+    const fields = parsed.fields || parsed.applicant || {};
+
+    if (!fields || typeof fields !== "object") {
       return [];
     }
 
-    return Object.entries(applicant).filter(
-      ([, value]) => value !== null && value !== undefined && String(value).trim() !== ""
+    return Object.entries(fields).filter(
+      ([, value]) =>
+        value !== null &&
+        value !== undefined &&
+        String(value).trim() !== ""
+    );
+  };
+
+  const getDocumentName = (request) => {
+    const parsed = parseFormData(request);
+
+    return (
+      request.document_name ||
+      parsed.document_name ||
+      parsed.parent_document ||
+      "Document Request"
     );
   };
 
@@ -295,8 +402,15 @@ export default function Admin() {
 
       <div className="admin-page">
         <div className="admin-header">
-          <h1>Admin Dashboard</h1>
-          <p>Welcome, {user?.full_name || "Admin"}</p>
+          <h1>
+            {user?.role === "superadmin"
+              ? "Superadmin Dashboard"
+              : "Admin Dashboard"}
+          </h1>
+          <p>
+            Welcome, {user?.full_name || "Admin"}{" "}
+            <span className="admin-small-text">({user?.role})</span>
+          </p>
         </div>
 
         <div className="admin-cards">
@@ -325,7 +439,7 @@ export default function Admin() {
           <div className="admin-table-header">
             <div>
               <h2>Document Requests</h2>
-              <p>View, verify, and update citizen document requests.</p>
+              <p>View, verify, update, and schedule citizen document requests.</p>
             </div>
 
             <button type="button" onClick={fetchRequests} disabled={loading}>
@@ -346,7 +460,8 @@ export default function Admin() {
                   <th>Date Submitted</th>
                   <th>Status</th>
                   <th>Payment</th>
-                  <th>File</th>
+                  <th>Files</th>
+                  <th>Pickup Schedule</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -354,8 +469,17 @@ export default function Admin() {
               <tbody>
                 {requests.length > 0 ? (
                   requests.map((request) => {
-                    const fileUrl = getFileUrl(request.file_path);
+                    const requirementFileUrl = getFileUrl(
+                      request.requirement_file_path || request.file_path
+                    );
+
+                    const paymentProofUrl = getFileUrl(
+                      request.payment_proof_file_path ||
+                        request.payment_proof_path
+                    );
+
                     const applicantDetails = getApplicantDetails(request);
+                    const documentName = getDocumentName(request);
 
                     return (
                       <tr key={request.id}>
@@ -365,7 +489,7 @@ export default function Admin() {
                         </td>
 
                         <td>
-                          <strong>{request.document_name}</strong>
+                          <strong>{documentName}</strong>
 
                           {applicantDetails.length > 0 && (
                             <details className="admin-details">
@@ -380,6 +504,12 @@ export default function Admin() {
                                 ))}
                               </div>
                             </details>
+                          )}
+
+                          {request.receipt_number && (
+                            <p className="admin-small-text">
+                              Receipt: {request.receipt_number}
+                            </p>
                           )}
                         </td>
 
@@ -397,8 +527,23 @@ export default function Admin() {
                           </span>
 
                           <p className="admin-small-text">
-                            {formatAmount(request.amount_due)}
+                            Total:{" "}
+                            {formatAmount(
+                              request.total_amount || request.amount_due
+                            )}
                           </p>
+
+                          {request.document_fee !== undefined && (
+                            <p className="admin-small-text">
+                              Doc Fee: {formatAmount(request.document_fee)}
+                            </p>
+                          )}
+
+                          {request.system_fee !== undefined && (
+                            <p className="admin-small-text">
+                              System Fee: {formatAmount(request.system_fee)}
+                            </p>
+                          )}
 
                           {request.payment_method &&
                             request.payment_method !== "None" && (
@@ -415,18 +560,88 @@ export default function Admin() {
                         </td>
 
                         <td>
-                          {fileUrl ? (
+                          {requirementFileUrl ? (
                             <a
-                              href={fileUrl}
+                              href={requirementFileUrl}
                               target="_blank"
                               rel="noreferrer"
                               className="admin-file-link"
                             >
-                              View File
+                              Requirement
                             </a>
                           ) : (
-                            <span className="admin-muted">No file</span>
+                            <p className="admin-muted">No requirement</p>
                           )}
+
+                          {paymentProofUrl ? (
+                            <a
+                              href={paymentProofUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="admin-file-link"
+                            >
+                              Payment Proof
+                            </a>
+                          ) : (
+                            <p className="admin-muted">No payment proof</p>
+                          )}
+                        </td>
+
+                        <td>
+                          {request.pickup_date || request.appointment_date ? (
+                            <div>
+                              <p className="admin-small-text">
+                                Date:{" "}
+                                {formatDate(
+                                  request.pickup_date ||
+                                    request.appointment_date
+                                )}
+                              </p>
+                              <p className="admin-small-text">
+                                Time:{" "}
+                                {formatTime(
+                                  request.pickup_time ||
+                                    request.appointment_time
+                                )}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="admin-muted">Not scheduled</p>
+                          )}
+
+                          <div className="admin-actions">
+                            <input
+                              type="date"
+                              value={pickupInputs[request.id]?.pickup_date || ""}
+                              onChange={(e) =>
+                                updatePickupInput(
+                                  request.id,
+                                  "pickup_date",
+                                  e.target.value
+                                )
+                              }
+                            />
+
+                            <input
+                              type="time"
+                              value={pickupInputs[request.id]?.pickup_time || ""}
+                              onChange={(e) =>
+                                updatePickupInput(
+                                  request.id,
+                                  "pickup_time",
+                                  e.target.value
+                                )
+                              }
+                            />
+
+                            <button
+                              type="button"
+                              className="admin-pay-btn"
+                              onClick={() => setPickupSchedule(request.id)}
+                            >
+                              Set Pickup
+                            </button>
+                          </div>
                         </td>
 
                         <td>
@@ -467,7 +682,7 @@ export default function Admin() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan="7" className="admin-empty">
+                    <td colSpan="8" className="admin-empty">
                       No requests loaded yet.
                     </td>
                   </tr>

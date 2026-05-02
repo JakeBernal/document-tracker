@@ -15,7 +15,9 @@ export default function UserDashboard() {
     const storedUserRaw = localStorage.getItem("user");
     const token = localStorage.getItem("token");
 
-    if (!storedUserRaw || !token) return null;
+    if (!storedUserRaw || !token) {
+      return null;
+    }
 
     try {
       return JSON.parse(storedUserRaw);
@@ -38,7 +40,6 @@ export default function UserDashboard() {
         return;
       }
 
-      // No user_id in URL — backend reads it from the JWT token
       const res = await fetch("http://localhost:5001/api/requests/my", {
         method: "GET",
         headers: {
@@ -47,7 +48,6 @@ export default function UserDashboard() {
       });
 
       const data = await res.json();
-      console.log("MY REQUESTS RESPONSE:", data);
 
       if (!res.ok) {
         setRequests([]);
@@ -73,7 +73,7 @@ export default function UserDashboard() {
       return;
     }
 
-    if (storedUser.role !== "citizen") {
+    if (storedUser.role === "admin" || storedUser.role === "superadmin") {
       navigate("/admin");
       return;
     }
@@ -82,44 +82,94 @@ export default function UserDashboard() {
     fetchRequests();
   }, [navigate]);
 
+  const parseFormData = (request) => {
+    if (!request.form_data) {
+      return {};
+    }
+
+    if (typeof request.form_data === "object") {
+      return request.form_data;
+    }
+
+    try {
+      return JSON.parse(request.form_data);
+    } catch (error) {
+      return {};
+    }
+  };
+
   const getStatusClass = (status) => {
     switch (status) {
-      case "Pending":        return "status pending";
-      case "Processing":     return "status processing";
-      case "Needs More Info":return "status needs-info";
-      case "Ready for Pickup": return "status ready";
+      case "Pending":
+        return "status pending";
+      case "Processing":
+        return "status processing";
+      case "Needs More Info":
+        return "status needs-info";
+      case "Ready for Pickup":
+        return "status ready";
       case "Completed":
-      case "Approved":       return "status approved";
-      case "Rejected":       return "status rejected";
-      default:               return "status";
+      case "Approved":
+        return "status approved";
+      case "Rejected":
+        return "status rejected";
+      default:
+        return "status";
     }
   };
 
   const getPaymentClass = (paymentStatus) => {
     switch (paymentStatus) {
-      case "Paid":    return "payment paid";
-      case "Waived":  return "payment waived";
-      case "Unpaid":  return "payment unpaid";
-      default:        return "payment";
+      case "Paid":
+        return "payment paid";
+      case "Waived":
+        return "payment waived";
+      case "Unpaid":
+        return "payment unpaid";
+      default:
+        return "payment";
     }
   };
 
   const getDocumentName = (request) => {
-    if (request.document_name) return request.document_name;
+    const parsed = parseFormData(request);
 
-    const formData = request.form_data;
-    if (formData?.document_name)  return formData.document_name;
-    if (formData?.parent_document) return formData.parent_document;
+    return (
+      request.document_name ||
+      parsed.document_name ||
+      parsed.parent_document ||
+      "Document Request"
+    );
+  };
 
-    return "Document Request";
+  const getApplicantSummary = (request) => {
+    const parsed = parseFormData(request);
+    const fields = parsed.fields || parsed.applicant || {};
+
+    if (!fields || typeof fields !== "object") {
+      return [];
+    }
+
+    return Object.entries(fields).filter(
+      ([, value]) =>
+        value !== null &&
+        value !== undefined &&
+        String(value).trim() !== ""
+    );
   };
 
   const getRequestDate = (request) => {
     const rawDate = request.created_at || request.updated_at;
-    if (!rawDate) return "—";
+
+    if (!rawDate) {
+      return "—";
+    }
 
     const date = new Date(rawDate);
-    if (Number.isNaN(date.getTime())) return rawDate;
+
+    if (Number.isNaN(date.getTime())) {
+      return rawDate;
+    }
 
     return date.toLocaleDateString("en-PH", {
       year: "numeric",
@@ -128,23 +178,156 @@ export default function UserDashboard() {
     });
   };
 
-  const formatAmount = (amount) =>
-    Number(amount || 0).toLocaleString("en-PH", {
+  const formatDate = (rawDate) => {
+    if (!rawDate) {
+      return "—";
+    }
+
+    const date = new Date(rawDate);
+
+    if (Number.isNaN(date.getTime())) {
+      return rawDate;
+    }
+
+    return date.toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  const formatTime = (rawTime) => {
+    if (!rawTime) {
+      return "—";
+    }
+
+    const [hour, minute] = String(rawTime).split(":");
+    const date = new Date();
+
+    date.setHours(Number(hour || 0));
+    date.setMinutes(Number(minute || 0));
+
+    return date.toLocaleTimeString("en-PH", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  const formatAmount = (amount) => {
+    return Number(amount || 0).toLocaleString("en-PH", {
       style: "currency",
       currency: "PHP",
     });
+  };
 
   const getFileUrl = (filePath) => {
-    if (!filePath) return null;
+    if (!filePath) {
+      return null;
+    }
+
     const cleanPath = String(filePath).replaceAll("\\", "/");
-    if (cleanPath.startsWith("http")) return cleanPath;
+
+    if (cleanPath.startsWith("http")) {
+      return cleanPath;
+    }
+
     return `http://localhost:5001/${cleanPath}`;
   };
 
-  const totalRequests    = requests.length;
-  const pendingRequests  = requests.filter((r) => r.status === "Pending").length;
+  const getRequirementFileUrl = (request) => {
+    return getFileUrl(
+      request.requirement_file_path ||
+        request.file_path ||
+        request.uploaded_file ||
+        null
+    );
+  };
+
+  const getPaymentProofUrl = (request) => {
+    return getFileUrl(
+      request.payment_proof_file_path || request.payment_proof_path || null
+    );
+  };
+
+  const getDisplayAmount = (request) => {
+    return request.total_amount || request.amount_due || 0;
+  };
+
+  const submitFeedback = async (request) => {
+    if (request.status !== "Completed") {
+      alert("You can submit feedback only after the request is completed.");
+      return;
+    }
+
+    const ratingInput = window.prompt(
+      "Rate your experience from 1 to 5 stars:",
+      "5"
+    );
+
+    if (ratingInput === null) {
+      return;
+    }
+
+    const rating = Number(ratingInput);
+
+    if (!rating || rating < 1 || rating > 5) {
+      alert("Rating must be from 1 to 5 only.");
+      return;
+    }
+
+    const comment = window.prompt(
+      "Write your feedback or comment:",
+      "Thank you for the service."
+    );
+
+    if (comment === null) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+
+      const res = await fetch(
+        `http://localhost:5001/api/requests/${request.id}/feedback`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            rating,
+            comment,
+          }),
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.message || "Failed to submit feedback.");
+        return;
+      }
+
+      alert("Feedback submitted successfully.");
+      await fetchRequests();
+    } catch (error) {
+      console.error("SUBMIT FEEDBACK ERROR:", error);
+      alert("Cannot connect to server.");
+    }
+  };
+
+  const totalRequests = requests.length;
+
+  const pendingRequests = requests.filter(
+    (request) => request.status === "Pending"
+  ).length;
+
   const approvedRequests = requests.filter(
-    (r) => r.status === "Approved" || r.status === "Completed" || r.status === "Ready for Pickup"
+    (request) =>
+      request.status === "Approved" ||
+      request.status === "Completed" ||
+      request.status === "Ready for Pickup"
   ).length;
 
   return (
@@ -165,6 +348,14 @@ export default function UserDashboard() {
           >
             + Request Document
           </button>
+
+          <button
+            type="button"
+            className="request-btn"
+            onClick={() => navigate("/calendar")}
+          >
+            View Pickup Calendar
+          </button>
         </div>
 
         <div className="status-cards">
@@ -172,13 +363,15 @@ export default function UserDashboard() {
             <h3>{totalRequests}</h3>
             <p>Total Requests</p>
           </div>
+
           <div className="card">
             <h3>{pendingRequests}</h3>
             <p>Pending</p>
           </div>
+
           <div className="card">
             <h3>{approvedRequests}</h3>
-            <p>Approved</p>
+            <p>Approved / Ready</p>
           </div>
         </div>
 
@@ -213,23 +406,51 @@ export default function UserDashboard() {
                     <th>Document</th>
                     <th>Date</th>
                     <th>Status</th>
+                    <th>Pickup Schedule</th>
                     <th>Fee</th>
                     <th>Payment</th>
-                    <th>File</th>
+                    <th>Files / Receipt / Feedback</th>
                   </tr>
                 </thead>
 
                 <tbody>
                   {requests.length > 0 ? (
                     requests.map((request) => {
-                      const fileUrl = getFileUrl(request.file_path);
+                      const requirementFileUrl = getRequirementFileUrl(request);
+                      const paymentProofUrl = getPaymentProofUrl(request);
+                      const applicantDetails = getApplicantSummary(request);
 
                       return (
                         <tr key={request.id}>
                           <td>
                             <strong>{getDocumentName(request)}</strong>
-                            {request.notes && (
-                              <p className="request-note">{request.notes}</p>
+
+                            {request.receipt_number && (
+                              <p className="request-note">
+                                Receipt: {request.receipt_number}
+                              </p>
+                            )}
+
+                            {applicantDetails.length > 0 && (
+                              <details className="request-details">
+                                <summary>View details</summary>
+
+                                <div className="request-detail-list">
+                                  {applicantDetails.map(([key, value]) => (
+                                    <p key={key}>
+                                      <span>
+                                        {key
+                                          .replaceAll("_", " ")
+                                          .replace(/\b\w/g, (char) =>
+                                            char.toUpperCase()
+                                          )}
+                                        :
+                                      </span>{" "}
+                                      {String(value)}
+                                    </p>
+                                  ))}
+                                </div>
+                              </details>
                             )}
                           </td>
 
@@ -241,10 +462,52 @@ export default function UserDashboard() {
                             </span>
                           </td>
 
-                          <td>{formatAmount(request.amount_due)}</td>
+                          <td>
+                            {request.pickup_date ||
+                            request.appointment_date ? (
+                              <>
+                                <p className="payment-method">
+                                  {formatDate(
+                                    request.pickup_date ||
+                                      request.appointment_date
+                                  )}
+                                </p>
+                                <p className="request-note">
+                                  {formatTime(
+                                    request.pickup_time ||
+                                      request.appointment_time
+                                  )}
+                                </p>
+                              </>
+                            ) : (
+                              <span className="no-file-text">
+                                Not scheduled
+                              </span>
+                            )}
+                          </td>
 
                           <td>
-                            <span className={getPaymentClass(request.payment_status)}>
+                            <strong>{formatAmount(getDisplayAmount(request))}</strong>
+
+                            {request.document_fee !== undefined && (
+                              <p className="request-note">
+                                Doc Fee: {formatAmount(request.document_fee)}
+                              </p>
+                            )}
+
+                            {request.system_fee !== undefined && (
+                              <p className="request-note">
+                                System Fee: {formatAmount(request.system_fee)}
+                              </p>
+                            )}
+                          </td>
+
+                          <td>
+                            <span
+                              className={getPaymentClass(
+                                request.payment_status
+                              )}
+                            >
                               {request.payment_status || "Unpaid"}
                             </span>
 
@@ -254,20 +517,57 @@ export default function UserDashboard() {
                                   {request.payment_method}
                                 </p>
                               )}
+
+                            {request.payment_reference && (
+                              <p className="request-note">
+                                Ref: {request.payment_reference}
+                              </p>
+                            )}
                           </td>
 
                           <td>
-                            {fileUrl ? (
+                            {requirementFileUrl ? (
                               <a
-                                href={fileUrl}
+                                href={requirementFileUrl}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="view-file-link"
                               >
-                                View File
+                                Requirement
                               </a>
                             ) : (
-                              <span className="no-file-text">No file</span>
+                              <p className="no-file-text">No requirement</p>
+                            )}
+
+                            {paymentProofUrl ? (
+                              <a
+                                href={paymentProofUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="view-file-link"
+                              >
+                                Payment Proof
+                              </a>
+                            ) : (
+                              <p className="no-file-text">No payment proof</p>
+                            )}
+
+                            <button
+                              type="button"
+                              className="view-file-link receipt-link-btn"
+                              onClick={() => navigate(`/receipt/${request.id}`)}
+                            >
+                              View Receipt
+                            </button>
+
+                            {request.status === "Completed" && (
+                              <button
+                                type="button"
+                                className="view-file-link receipt-link-btn"
+                                onClick={() => submitFeedback(request)}
+                              >
+                                Rate Service
+                              </button>
                             )}
                           </td>
                         </tr>
@@ -275,7 +575,7 @@ export default function UserDashboard() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan="6" className="no-requests">
+                      <td colSpan="7" className="no-requests">
                         No requests found
                       </td>
                     </tr>

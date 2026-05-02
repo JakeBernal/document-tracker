@@ -1,12 +1,6 @@
 import React from "react";
-import Login from '../components/login'
+import Login from "../components/login";
 
-
-export default function signin(){
-
-    return(
-        <>
-        <Login/>
-        </>
-    )
+export default function Signin() {
+  return <Login />;
 }

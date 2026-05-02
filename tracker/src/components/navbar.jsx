@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
 import "../css/navbar.css";
+import NotificationBell from "./notificationbell";
 
 export default function Navbar() {
   const navigate = useNavigate();
@@ -37,6 +38,8 @@ export default function Navbar() {
     };
   }, []);
 
+  const isAdminUser = user?.role === "admin" || user?.role === "superadmin";
+
   const handleLogout = () => {
     localStorage.removeItem("user");
     localStorage.removeItem("token");
@@ -51,6 +54,7 @@ export default function Navbar() {
 
       setTimeout(() => {
         const services = document.getElementById("services");
+
         if (services) {
           services.scrollIntoView({ behavior: "smooth" });
         }
@@ -60,8 +64,53 @@ export default function Navbar() {
     }
 
     const services = document.getElementById("services");
+
     if (services) {
       services.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
+  const scrollToAbout = () => {
+    if (window.location.pathname !== "/") {
+      navigate("/");
+
+      setTimeout(() => {
+        const about = document.getElementById("about");
+
+        if (about) {
+          about.scrollIntoView({ behavior: "smooth" });
+        }
+      }, 100);
+
+      return;
+    }
+
+    const about = document.getElementById("about");
+
+    if (about) {
+      about.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
+  const scrollToContact = () => {
+    if (window.location.pathname !== "/") {
+      navigate("/");
+
+      setTimeout(() => {
+        const contact = document.getElementById("contact");
+
+        if (contact) {
+          contact.scrollIntoView({ behavior: "smooth" });
+        }
+      }, 100);
+
+      return;
+    }
+
+    const contact = document.getElementById("contact");
+
+    if (contact) {
+      contact.scrollIntoView({ behavior: "smooth" });
     }
   };
 
@@ -71,11 +120,12 @@ export default function Navbar() {
       return;
     }
 
-    if (user.role === "admin") {
+    if (isAdminUser) {
       navigate("/admin");
-    } else {
-      navigate("/citizen");
+      return;
     }
+
+    navigate("/citizen");
   };
 
   const firstLetter = user?.full_name
@@ -86,6 +136,7 @@ export default function Navbar() {
     <nav className="navbar">
       <div className="logo" onClick={() => navigate("/")}>
         <img className="img" src="/logo.png" alt="Logo" />
+
         <span>
           PaperTrail
           <br />
@@ -97,8 +148,8 @@ export default function Navbar() {
         <ul>
           <li onClick={() => navigate("/")}>Home</li>
           <li onClick={scrollToServices}>Services</li>
-          <li>About</li>
-          <li>Contact</li>
+          <li onClick={scrollToAbout}>About</li>
+          <li onClick={scrollToContact}>Contact</li>
         </ul>
       </div>
 
@@ -108,42 +159,73 @@ export default function Navbar() {
             Sign In
           </button>
         ) : (
-          <div className="profile-container" ref={dropdownRef}>
-            <button
-              type="button"
-              className="profile"
-              onClick={() => setOpen(!open)}
-            >
-              <div className="avatar">{firstLetter}</div>
-            </button>
+          <>
+            <NotificationBell />
 
-            {open && (
-              <div className="dropdown">
-                <div className="dropdown-header">
-                  <p className="user-name">{user.full_name}</p>
-                  <small className="user-email">{user.email}</small>
-                </div>
+            <div className="profile-container" ref={dropdownRef}>
+              <button
+                type="button"
+                className="profile"
+                onClick={() => setOpen((prev) => !prev)}
+              >
+                <div className="avatar">{firstLetter}</div>
+              </button>
 
-                <hr />
+              {open && (
+                <div className="dropdown">
+                  <div className="dropdown-header">
+                    <p className="user-name">{user.full_name}</p>
+                    <small className="user-email">{user.email}</small>
+                    <small className="user-email">
+                      Role: {user.role}
+                    </small>
+                  </div>
 
-                <p onClick={goToDashboard}>Dashboard</p>
+                  <hr />
 
-                <p onClick={() => navigate("/profile")}>My Profile</p>
+                  <p onClick={goToDashboard}>Dashboard</p>
 
-                {user.role === "citizen" && (
-                  <p onClick={() => navigate("/documents")}>
-                    Request Document
+                  {user.role === "citizen" && (
+                    <>
+                      <p onClick={() => navigate("/documents")}>
+                        Request Document
+                      </p>
+
+                      <p onClick={() => navigate("/calendar")}>
+                        Pickup Calendar
+                      </p>
+                    </>
+                  )}
+
+         {isAdminUser && (
+        <>
+          <p onClick={() => navigate("/admin")}>
+            Manage Requests
+          </p>
+
+          <p onClick={() => navigate("/calendar")}>
+            Calendar Schedule
+          </p>
+
+          <p onClick={() => navigate("/reports")}>
+            Reports
+          </p>
+        </>
+      )}
+
+      <p onClick={() => navigate("/feedback")}>Feedback</p>
+
+                  <p onClick={() => navigate("/profile")}>My Profile</p>
+
+                  <hr />
+
+                  <p className="logout" onClick={handleLogout}>
+                    Logout
                   </p>
-                )}
-
-                <hr />
-
-                <p className="logout" onClick={handleLogout}>
-                  Logout
-                </p>
-              </div>
-            )}
-          </div>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
     </nav>

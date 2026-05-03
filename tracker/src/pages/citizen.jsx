@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/navbar";
 import "../css/citizen.css";
@@ -10,6 +10,7 @@ export default function UserDashboard() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [activeFilter, setActiveFilter] = useState("All");
 
   const getStoredUser = () => {
     const storedUserRaw = localStorage.getItem("user");
@@ -109,6 +110,7 @@ export default function UserDashboard() {
       case "Ready for Pickup":
         return "status ready";
       case "Completed":
+        return "status completed";
       case "Approved":
         return "status approved";
       case "Rejected":
@@ -150,8 +152,27 @@ export default function UserDashboard() {
       return [];
     }
 
+    const hiddenKeys = [
+      "document_name",
+      "parent_document",
+      "category",
+      "payment_method",
+      "payment_method_for_database",
+      "payment_reference_number",
+      "payment_reference",
+      "receipt_number",
+      "document_fee",
+      "system_fee",
+      "discount_amount",
+      "total_amount",
+      "amount_due",
+      "created_at",
+      "citizen_updated_at",
+    ];
+
     return Object.entries(fields).filter(
-      ([, value]) =>
+      ([key, value]) =>
+        !hiddenKeys.includes(key) &&
         value !== null &&
         value !== undefined &&
         String(value).trim() !== ""
@@ -220,31 +241,26 @@ export default function UserDashboard() {
     });
   };
 
-  // FIX: Single correct getFileUrl — strips absolute Windows paths,
-  // always returns http://localhost:5001/uploads/filename.ext
   const getFileUrl = (filePath) => {
     if (!filePath) return null;
 
     let cleanPath = String(filePath).replaceAll("\\", "/");
 
-    // If it's already a full URL, return as-is
     if (cleanPath.startsWith("http")) return cleanPath;
 
-    // Strip any absolute path prefix, keep only uploads/filename
     const uploadsIndex = cleanPath.indexOf("uploads/");
     if (uploadsIndex !== -1) {
-      cleanPath = cleanPath.substring(uploadsIndex); // → "uploads/filename.png"
+      cleanPath = cleanPath.substring(uploadsIndex);
     }
 
     return `http://localhost:5001/${cleanPath}`;
-    // → "http://localhost:5001/uploads/filename.png" ✓
   };
 
-  // FIX: was missing entirely — caused "getPaymentProofUrl is not defined" error
   const getPaymentProofUrl = (request) => {
     return getFileUrl(
       request.payment_proof_file_path ||
         request.payment_proof_path ||
+        request.payment_proof ||
         null
     );
   };
@@ -254,6 +270,17 @@ export default function UserDashboard() {
       request.requirement_file_path ||
         request.file_path ||
         request.uploaded_file ||
+        null
+    );
+  };
+
+  const getReleasedDocumentUrl = (request) => {
+    return getFileUrl(
+      request.released_document_file_path ||
+        request.released_document_path ||
+        request.release_file_path ||
+        request.released_file_path ||
+        request.released_document ||
         null
     );
   };
@@ -332,12 +359,79 @@ export default function UserDashboard() {
     (request) => request.status === "Pending"
   ).length;
 
-  const approvedRequests = requests.filter(
-    (request) =>
-      request.status === "Approved" ||
-      request.status === "Completed" ||
-      request.status === "Ready for Pickup"
+  const processingRequests = requests.filter(
+    (request) => request.status === "Processing"
   ).length;
+
+  const needsMoreInfoRequests = requests.filter(
+    (request) => request.status === "Needs More Info"
+  ).length;
+
+  const approvedReadyRequests = requests.filter(
+    (request) =>
+      request.status === "Approved" || request.status === "Ready for Pickup"
+  ).length;
+
+  const completedRequests = requests.filter(
+    (request) => request.status === "Completed"
+  ).length;
+
+  const rejectedRequests = requests.filter(
+    (request) => request.status === "Rejected"
+  ).length;
+
+  const filterOptions = [
+    {
+      label: "All",
+      value: "All",
+      count: totalRequests,
+    },
+    {
+      label: "Pending",
+      value: "Pending",
+      count: pendingRequests,
+    },
+    {
+      label: "Processing",
+      value: "Processing",
+      count: processingRequests,
+    },
+    {
+      label: "Needs More Info",
+      value: "Needs More Info",
+      count: needsMoreInfoRequests,
+    },
+    {
+      label: "Approved / Ready",
+      value: "Approved / Ready",
+      count: approvedReadyRequests,
+    },
+    {
+      label: "Completed",
+      value: "Completed",
+      count: completedRequests,
+    },
+    {
+      label: "Rejected",
+      value: "Rejected",
+      count: rejectedRequests,
+    },
+  ];
+
+  const filteredRequests = useMemo(() => {
+    if (activeFilter === "All") {
+      return requests;
+    }
+
+    if (activeFilter === "Approved / Ready") {
+      return requests.filter(
+        (request) =>
+          request.status === "Approved" || request.status === "Ready for Pickup"
+      );
+    }
+
+    return requests.filter((request) => request.status === activeFilter);
+  }, [requests, activeFilter]);
 
   const handleEditRequest = (requestId) => {
     navigate(`/EditRequest/${requestId}`);
@@ -372,20 +466,32 @@ export default function UserDashboard() {
         </div>
 
         <div className="status-cards">
-          <div className="card">
+          <button
+            type="button"
+            className="card card-clickable"
+            onClick={() => setActiveFilter("All")}
+          >
             <h3>{totalRequests}</h3>
             <p>Total Requests</p>
-          </div>
+          </button>
 
-          <div className="card">
+          <button
+            type="button"
+            className="card card-clickable"
+            onClick={() => setActiveFilter("Pending")}
+          >
             <h3>{pendingRequests}</h3>
             <p>Pending</p>
-          </div>
+          </button>
 
-          <div className="card">
-            <h3>{approvedRequests}</h3>
+          <button
+            type="button"
+            className="card card-clickable"
+            onClick={() => setActiveFilter("Approved / Ready")}
+          >
+            <h3>{approvedReadyRequests}</h3>
             <p>Approved / Ready</p>
-          </div>
+          </button>
         </div>
 
         <div className="table-container">
@@ -403,6 +509,33 @@ export default function UserDashboard() {
             >
               {loading ? "Loading..." : "Refresh"}
             </button>
+          </div>
+
+          <div className="citizen-filter-bar">
+            {filterOptions.map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                className={
+                  activeFilter === filter.value
+                    ? "citizen-filter-btn active"
+                    : "citizen-filter-btn"
+                }
+                onClick={() => setActiveFilter(filter.value)}
+              >
+                <span>{filter.label}</span>
+                <strong>{filter.count}</strong>
+              </button>
+            ))}
+          </div>
+
+          <div className="citizen-filter-summary">
+            <p>
+              Showing: <strong>{activeFilter}</strong>
+            </p>
+            <p>
+              Results: <strong>{filteredRequests.length}</strong>
+            </p>
           </div>
 
           {errorMessage && (
@@ -428,24 +561,29 @@ export default function UserDashboard() {
                 </thead>
 
                 <tbody>
-                  {requests.length > 0 ? (
-                    requests.map((request) => {
+                  {filteredRequests.length > 0 ? (
+                    filteredRequests.map((request) => {
                       const requirementFileUrl = getRequirementFileUrl(request);
                       const paymentProofUrl = getPaymentProofUrl(request);
+                      const releasedDocumentUrl =
+                        getReleasedDocumentUrl(request);
                       const applicantDetails = getApplicantSummary(request);
 
                       return (
                         <tr key={request.id}>
                           <td>
                             <strong>{getDocumentName(request)}</strong>
+
                             {request.receipt_number && (
                               <p className="request-note">
                                 Receipt: {request.receipt_number}
                               </p>
                             )}
+
                             {applicantDetails.length > 0 && (
                               <details className="request-details">
                                 <summary>View details</summary>
+
                                 <div className="request-detail-list">
                                   {applicantDetails.map(([key, value]) => (
                                     <p key={key}>
@@ -564,6 +702,27 @@ export default function UserDashboard() {
                               <p className="no-file-text">No payment proof</p>
                             )}
 
+                            {releasedDocumentUrl ? (
+                              <>
+                                <a
+                                  href={releasedDocumentUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="view-file-link released-file-link"
+                                >
+                                  Released Document
+                                </a>
+
+                                <p className="release-status released">
+                                  Released document available
+                                </p>
+                              </>
+                            ) : (
+                              <p className="release-status not-released">
+                                No released document
+                              </p>
+                            )}
+
                             <button
                               type="button"
                               className="view-file-link receipt-link-btn"
@@ -586,7 +745,6 @@ export default function UserDashboard() {
                           </td>
 
                           <td>
-                            {/* Only show Edit button for editable statuses */}
                             {["Pending", "Needs More Info"].includes(
                               request.status
                             ) ? (
@@ -606,9 +764,8 @@ export default function UserDashboard() {
                     })
                   ) : (
                     <tr>
-                      {/* FIX: colSpan updated to 8 to match 8 columns */}
                       <td colSpan="8" className="no-requests">
-                        No requests found
+                        No requests found for {activeFilter}.
                       </td>
                     </tr>
                   )}

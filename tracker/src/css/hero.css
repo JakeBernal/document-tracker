@@ -24,6 +24,8 @@
 .hero-buttons button {
   margin: 17px;
   cursor: pointer;
+  font-family:'Roboto', sans-serif;
+  font-weight:500;
 }
 
 .primary {
@@ -33,6 +35,7 @@
   padding: 15px 20px;
   border-radius: 6px;
   font-weight: 300;
+  
 }
 
 .primary:hover {

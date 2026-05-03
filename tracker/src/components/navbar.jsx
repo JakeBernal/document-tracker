@@ -176,9 +176,7 @@ export default function Navbar() {
                   <div className="dropdown-header">
                     <p className="user-name">{user.full_name}</p>
                     <small className="user-email">{user.email}</small>
-                    <small className="user-email">
-                      Role: {user.role}
-                    </small>
+                    <small className="user-email"></small>
                   </div>
 
                   <hr />

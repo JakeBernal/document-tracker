@@ -245,18 +245,6 @@ exports.updateRequestOverride = async (req, res) => {
       addUpdate("total_amount", cleanNumber(req.body.total_amount));
     }
 
-    const requirementFile =
-      getFirstUploadedFile(req, "requirement_file") ||
-      getFirstUploadedFile(req, "uploaded_file") ||
-      getFirstUploadedFile(req, "file");
-
-    const paymentProofFile = getFirstUploadedFile(req, "payment_proof");
-
-    if (paymentProofFile) {
-      const paymentProofPath = normalizePath(paymentProofFile);
-      addUpdate("payment_proof_path", paymentProofPath);
-    }
-
     if (updates.length > 0) {
       params.push(id);
 
@@ -265,26 +253,6 @@ exports.updateRequestOverride = async (req, res) => {
          SET ${updates.join(", ")}
          WHERE id = ?`,
         params
-      );
-    }
-
-    if (requirementFile) {
-      const requirementPath = normalizePath(requirementFile);
-
-      await query(
-        `INSERT INTO uploads (request_id, file_path, upload_type)
-         VALUES (?, ?, 'requirement')`,
-        [id, requirementPath]
-      );
-    }
-
-    if (paymentProofFile) {
-      const paymentProofPath = normalizePath(paymentProofFile);
-
-      await query(
-        `INSERT INTO uploads (request_id, file_path, upload_type)
-         VALUES (?, ?, 'payment_proof')`,
-        [id, paymentProofPath]
       );
     }
 
@@ -314,12 +282,12 @@ exports.updateRequestOverride = async (req, res) => {
     await createNotification(
       existing.user_id,
       id,
-      "Request Updated by Superadmin",
-      "Your document request was reviewed and updated by the superadmin."
+      "Request Data Updated by Superadmin",
+      "Your request data was reviewed and updated. Uploaded files were not changed."
     );
 
     return res.json({
-      message: "Request updated by superadmin successfully.",
+      message: "Request data updated successfully. Uploaded files remained read-only and unchanged.",
     });
   } catch (err) {
     console.error("SUPERADMIN UPDATE REQUEST ERROR:", err);

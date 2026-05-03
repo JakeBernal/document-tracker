@@ -1,7 +1,6 @@
 const express = require("express");
 const router = express.Router();
 
-const upload = require("../middleware/upload");
 const { verifyToken, verifySuperadmin } = require("../middleware/authMiddleware");
 
 const {
@@ -23,17 +22,12 @@ const {
 router.get("/superadmin/users", verifyToken, verifySuperadmin, getUsers);
 router.put("/superadmin/users/:id/role", verifyToken, verifySuperadmin, updateUserRole);
 
-// ================= REQUEST OVERRIDE =================
+// ================= REQUEST OVERRIDE DATA ONLY =================
+// Files are read-only for admin and superadmin. Wrong files must be corrected by the citizen after status is set to Needs More Info.
 router.put(
   "/superadmin/requests/:id",
   verifyToken,
   verifySuperadmin,
-  upload.fields([
-    { name: "requirement_file", maxCount: 1 },
-    { name: "uploaded_file", maxCount: 1 },
-    { name: "file", maxCount: 1 },
-    { name: "payment_proof", maxCount: 1 },
-  ]),
   updateRequestOverride
 );
 

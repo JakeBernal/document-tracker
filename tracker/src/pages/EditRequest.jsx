@@ -303,7 +303,7 @@ export default function EditRequest() {
         return;
       }
 
-      setSuccessMessage("Request updated successfully. Redirecting to dashboard...");
+      setSuccessMessage(data.message || "Request updated successfully. Redirecting to dashboard...");
 
       setTimeout(() => {
         navigate(dashboardPath, { replace: true });

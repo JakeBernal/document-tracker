@@ -500,17 +500,24 @@ exports.updateRequest = async (req, res) => {
     const oldFormData = safeJsonParse(existing.form_data);
     const incomingFormData = safeJsonParse(req.body.form_data);
 
+    const oldFields =
+      oldFormData.fields && typeof oldFormData.fields === "object"
+        ? oldFormData.fields
+        : {};
+
+    const incomingFields =
+      incomingFormData.fields && typeof incomingFormData.fields === "object"
+        ? incomingFormData.fields
+        : {};
+
     const mergedFormData = {
       ...oldFormData,
       ...incomingFormData,
       fields: {
-        ...(oldFormData.fields && typeof oldFormData.fields === "object"
-          ? oldFormData.fields
-          : {}),
-        ...(incomingFormData.fields && typeof incomingFormData.fields === "object"
-          ? incomingFormData.fields
-          : {}),
+        ...oldFields,
+        ...incomingFields,
       },
+      citizen_updated_at: new Date().toISOString(),
     };
 
     if (req.body.document_name) {
@@ -529,15 +536,36 @@ exports.updateRequest = async (req, res) => {
     mergedFormData.payment_method =
       req.body.payment_method || incomingFormData.payment_method || finalPaymentMethod;
 
+    const newFile =
+      getFirstUploadedFile(req, "uploaded_file") || getFirstUploadedFile(req, "file");
+
+    let newFilePath = null;
+
+    if (newFile) {
+      newFilePath = normalizePath(newFile);
+      mergedFormData.uploaded_requirement_file = newFile.originalname || newFile.filename;
+      mergedFormData.requirement_reuploaded_at = new Date().toISOString();
+    }
+
+    const wasNeedsMoreInfo = existing.status === "Needs More Info";
+    const newStatus = wasNeedsMoreInfo ? "Pending" : existing.status;
+
+    if (wasNeedsMoreInfo) {
+      mergedFormData.resubmitted_at = new Date().toISOString();
+      mergedFormData.resubmitted_from_status = "Needs More Info";
+    }
+
     const finalNotes = req.body.notes || existing.notes || safeJsonStringify(mergedFormData);
 
     const result = await query(
       `UPDATE requests
-       SET notes = ?,
+       SET status = ?,
+           notes = ?,
            form_data = ?,
            payment_method = ?
        WHERE id = ? AND user_id = ?`,
       [
+        newStatus,
         finalNotes,
         safeJsonStringify(mergedFormData),
         finalPaymentMethod,
@@ -550,12 +578,7 @@ exports.updateRequest = async (req, res) => {
       return res.status(404).json({ message: "Request not found." });
     }
 
-    const newFile =
-      getFirstUploadedFile(req, "uploaded_file") || getFirstUploadedFile(req, "file");
-
-    if (newFile) {
-      const newFilePath = normalizePath(newFile);
-
+    if (newFilePath) {
       await query(
         `INSERT INTO uploads (request_id, file_path, upload_type)
          VALUES (?, ?, 'requirement')`,
@@ -563,11 +586,20 @@ exports.updateRequest = async (req, res) => {
       );
     }
 
+    await query(
+      `UPDATE receipts
+       SET payment_method = ?
+       WHERE request_id = ?`,
+      [finalPaymentMethod, id]
+    );
+
     await createNotification(
       userId,
       id,
-      "Request Updated",
-      "Your document request has been updated successfully."
+      wasNeedsMoreInfo ? "Request Resubmitted" : "Request Updated",
+      wasNeedsMoreInfo
+        ? "Your corrected request has been submitted again and is now pending admin review."
+        : "Your document request has been updated successfully."
     );
 
     const citizenName = await getCitizenName(userId);
@@ -576,16 +608,23 @@ exports.updateRequest = async (req, res) => {
 
     await notifyAdmins(
       id,
-      "Request Edited by Citizen",
-      `${citizenName} updated ${documentName} request #${id}.`
+      wasNeedsMoreInfo ? "Request Resubmitted by Citizen" : "Request Edited by Citizen",
+      wasNeedsMoreInfo
+        ? `${citizenName} resubmitted ${documentName} request #${id}. Status is now Pending.`
+        : `${citizenName} updated ${documentName} request #${id}.`
     );
 
     return res.status(200).json({
-      message: "Request updated successfully.",
+      message: wasNeedsMoreInfo
+        ? "Request updated and resubmitted successfully. Status is now Pending."
+        : "Request updated successfully.",
+      status: newStatus,
       request: {
         id: Number(id),
+        status: newStatus,
         form_data: mergedFormData,
         payment_method: finalPaymentMethod,
+        requirement_file_path: newFilePath,
       },
     });
   } catch (err) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/navbar";
 import "../css/admin.css";
@@ -9,28 +9,27 @@ export default function Admin() {
   const [user, setUser] = useState(null);
   const [requests, setRequests] = useState([]);
   const [pickupInputs, setPickupInputs] = useState({});
+  const [releasedFiles, setReleasedFiles] = useState({});
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-
-  const isAdminUser = (storedUser) => {
-    return storedUser?.role === "admin" || storedUser?.role === "superadmin";
-  };
 
   const getStoredUser = () => {
     const storedUserRaw = localStorage.getItem("user");
     const token = localStorage.getItem("token");
 
-    if (!storedUserRaw || !token) {
-      return null;
-    }
+    if (!storedUserRaw || !token) return null;
 
     try {
       return JSON.parse(storedUserRaw);
-    } catch (error) {
+    } catch {
       localStorage.removeItem("user");
       localStorage.removeItem("token");
       return null;
     }
+  };
+
+  const isAdminUser = (storedUser) => {
+    return storedUser?.role === "admin" || storedUser?.role === "superadmin";
   };
 
   const fetchRequests = async () => {
@@ -41,12 +40,11 @@ export default function Admin() {
       const token = localStorage.getItem("token");
 
       if (!token) {
-        navigate("/signin");
+        navigate("/signin", { replace: true });
         return;
       }
 
       const res = await fetch("http://localhost:5001/api/admin/requests", {
-        method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -85,7 +83,125 @@ export default function Admin() {
 
     setUser(storedUser);
     fetchRequests();
-  }, []);
+  }, [navigate]);
+
+  const parseFormData = (request) => {
+    if (!request.form_data) return {};
+    if (typeof request.form_data === "object") return request.form_data;
+
+    try {
+      return JSON.parse(request.form_data);
+    } catch {
+      return {};
+    }
+  };
+
+  const getApplicantDetails = (request) => {
+    const parsed = parseFormData(request);
+    const fields = parsed.fields || parsed.applicant || {};
+
+    if (!fields || typeof fields !== "object") return [];
+
+    return Object.entries(fields).filter(
+      ([, value]) => value !== null && value !== undefined && String(value).trim() !== ""
+    );
+  };
+
+  const getDocumentName = (request) => {
+    const parsed = parseFormData(request);
+
+    return (
+      request.document_name ||
+      parsed.document_name ||
+      parsed.parent_document ||
+      "Document Request"
+    );
+  };
+
+  const getFileUrl = (filePath) => {
+    if (!filePath) return null;
+
+    let cleanPath = String(filePath).replaceAll("\\", "/");
+
+    if (cleanPath.startsWith("http")) return cleanPath;
+
+    const uploadsIndex = cleanPath.indexOf("uploads/");
+
+    if (uploadsIndex !== -1) {
+      cleanPath = cleanPath.substring(uploadsIndex);
+    }
+
+    return `http://localhost:5001/${cleanPath}`;
+  };
+
+  const formatDate = (rawDate) => {
+    if (!rawDate) return "—";
+
+    const date = new Date(rawDate);
+
+    if (Number.isNaN(date.getTime())) return rawDate;
+
+    return date.toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  const formatTime = (rawTime) => {
+    if (!rawTime) return "—";
+
+    const [hour, minute] = String(rawTime).split(":");
+    const date = new Date();
+    date.setHours(Number(hour || 0));
+    date.setMinutes(Number(minute || 0));
+
+    return date.toLocaleTimeString("en-PH", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  const formatAmount = (amount) => {
+    return Number(amount || 0).toLocaleString("en-PH", {
+      style: "currency",
+      currency: "PHP",
+    });
+  };
+
+  const getStatusClass = (status) => {
+    switch (status) {
+      case "Pending":
+        return "admin-status pending";
+      case "Processing":
+        return "admin-status processing";
+      case "Needs More Info":
+        return "admin-status needs-info";
+      case "Approved":
+        return "admin-status approved";
+      case "Ready for Pickup":
+        return "admin-status ready";
+      case "Completed":
+        return "admin-status completed";
+      case "Rejected":
+        return "admin-status rejected";
+      default:
+        return "admin-status";
+    }
+  };
+
+  const getPaymentClass = (paymentStatus) => {
+    switch (paymentStatus) {
+      case "Paid":
+        return "admin-payment paid";
+      case "Waived":
+        return "admin-payment waived";
+      case "Unpaid":
+        return "admin-payment unpaid";
+      default:
+        return "admin-payment";
+    }
+  };
 
   const updateStatus = async (requestId, newStatus) => {
     try {
@@ -99,9 +215,7 @@ export default function Admin() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({
-            status: newStatus,
-          }),
+          body: JSON.stringify({ status: newStatus }),
         }
       );
 
@@ -119,20 +233,21 @@ export default function Admin() {
     }
   };
 
-  const updatePayment = async (request) => {
+  const updatePayment = async (request, paymentStatus = "Paid") => {
     try {
       const token = localStorage.getItem("token");
 
-      const method = window.prompt(
-        "Payment method: Cash, GCash, PayMaya, Bank Transfer, Other",
+      const defaultMethod =
         request.payment_method && request.payment_method !== "None"
           ? request.payment_method
-          : "Cash"
+          : "Cash";
+
+      const method = window.prompt(
+        "Payment method: Cash, GCash, PayMaya, Bank Transfer, Other",
+        defaultMethod
       );
 
-      if (!method) {
-        return;
-      }
+      if (!method) return;
 
       const allowedMethods = ["Cash", "GCash", "PayMaya", "Bank Transfer", "Other"];
 
@@ -151,9 +266,7 @@ export default function Admin() {
         Number(request.total_amount || request.amount_due || 0).toFixed(2)
       );
 
-      if (amountInput === null) {
-        return;
-      }
+      if (amountInput === null) return;
 
       const amountDue = Number(amountInput);
 
@@ -171,7 +284,7 @@ export default function Admin() {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            payment_status: "Paid",
+            payment_status: paymentStatus,
             payment_method: method,
             payment_reference: reference || null,
             amount_due: amountDue,
@@ -220,7 +333,7 @@ export default function Admin() {
       const token = localStorage.getItem("token");
 
       const res = await fetch(
-        `http://localhost:5001/api/admin/requests/${requestId}/appointment`,
+        `http://localhost:5001/api/admin/requests/${requestId}/pickup`,
         {
           method: "PUT",
           headers: {
@@ -249,152 +362,66 @@ export default function Admin() {
     }
   };
 
-  const getStatusClass = (status) => {
-    switch (status) {
-      case "Pending":
-        return "admin-status pending";
-      case "Processing":
-        return "admin-status processing";
-      case "Needs More Info":
-        return "admin-status needs-info";
-      case "Approved":
-        return "admin-status approved";
-      case "Ready for Pickup":
-        return "admin-status ready";
-      case "Completed":
-        return "admin-status completed";
-      case "Rejected":
-        return "admin-status rejected";
-      default:
-        return "admin-status";
-    }
-  };
+  const uploadReleasedDocument = async (requestId) => {
+    const selectedFile = releasedFiles[requestId];
 
-  const getPaymentClass = (paymentStatus) => {
-    switch (paymentStatus) {
-      case "Paid":
-        return "admin-payment paid";
-      case "Waived":
-        return "admin-payment waived";
-      case "Unpaid":
-        return "admin-payment unpaid";
-      default:
-        return "admin-payment";
-    }
-  };
-
-  const formatDate = (rawDate) => {
-    if (!rawDate) {
-      return "—";
-    }
-
-    const date = new Date(rawDate);
-
-    if (Number.isNaN(date.getTime())) {
-      return rawDate;
-    }
-
-    return date.toLocaleDateString("en-PH", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
-
-  const formatTime = (rawTime) => {
-    if (!rawTime) {
-      return "—";
-    }
-
-    const [hour, minute] = String(rawTime).split(":");
-    const date = new Date();
-
-    date.setHours(Number(hour || 0));
-    date.setMinutes(Number(minute || 0));
-
-    return date.toLocaleTimeString("en-PH", {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  };
-
-  const formatAmount = (amount) => {
-    return Number(amount || 0).toLocaleString("en-PH", {
-      style: "currency",
-      currency: "PHP",
-    });
-  };
-
-  const getFileUrl = (filePath) => {
-    if (!filePath) {
-      return null;
-    }
-
-    const cleanPath = String(filePath).replaceAll("\\", "/");
-
-    if (cleanPath.startsWith("http")) {
-      return cleanPath;
-    }
-
-    return `http://localhost:5001/${cleanPath}`;
-  };
-
-  const parseFormData = (request) => {
-    if (!request.form_data) {
-      return {};
-    }
-
-    if (typeof request.form_data === "object") {
-      return request.form_data;
+    if (!selectedFile) {
+      alert("Please choose a document file to upload.");
+      return;
     }
 
     try {
-      return JSON.parse(request.form_data);
-    } catch {
-      return {};
+      const token = localStorage.getItem("token");
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+
+      const res = await fetch(
+        `http://localhost:5001/api/admin/requests/${requestId}/upload`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.message || "Failed to upload released document.");
+        return;
+      }
+
+      alert("Released document uploaded successfully.");
+      setReleasedFiles((prev) => ({ ...prev, [requestId]: null }));
+      await fetchRequests();
+    } catch (error) {
+      console.error("UPLOAD RELEASED DOCUMENT ERROR:", error);
+      alert("Cannot connect to server.");
     }
   };
 
-  const getApplicantDetails = (request) => {
-    const parsed = parseFormData(request);
-    const fields = parsed.fields || parsed.applicant || {};
+  const summary = useMemo(() => {
+    const totalRequests = requests.length;
+    const pendingRequests = requests.filter((item) => item.status === "Pending").length;
+    const processingRequests = requests.filter((item) => item.status === "Processing").length;
+    const completedRequests = requests.filter((item) => item.status === "Completed").length;
+    const paidRequests = requests.filter((item) => item.payment_status === "Paid").length;
+    const totalRevenue = requests.reduce((sum, item) => {
+      if (item.payment_status !== "Paid") return sum;
+      return sum + Number(item.total_amount || item.amount_due || 0);
+    }, 0);
 
-    if (!fields || typeof fields !== "object") {
-      return [];
-    }
-
-    return Object.entries(fields).filter(
-      ([, value]) =>
-        value !== null &&
-        value !== undefined &&
-        String(value).trim() !== ""
-    );
-  };
-
-  const getDocumentName = (request) => {
-    const parsed = parseFormData(request);
-
-    return (
-      request.document_name ||
-      parsed.document_name ||
-      parsed.parent_document ||
-      "Document Request"
-    );
-  };
-
-  const totalRequests = requests.length;
-
-  const pendingRequests = requests.filter(
-    (request) => request.status === "Pending"
-  ).length;
-
-  const processingRequests = requests.filter(
-    (request) => request.status === "Processing"
-  ).length;
-
-  const completedRequests = requests.filter(
-    (request) => request.status === "Completed"
-  ).length;
+    return {
+      totalRequests,
+      pendingRequests,
+      processingRequests,
+      completedRequests,
+      paidRequests,
+      totalRevenue,
+    };
+  }, [requests]);
 
   return (
     <>
@@ -402,11 +429,7 @@ export default function Admin() {
 
       <div className="admin-page">
         <div className="admin-header">
-          <h1>
-            {user?.role === "superadmin"
-              ? "Superadmin Dashboard"
-              : "Admin Dashboard"}
-          </h1>
+          <h1>{user?.role === "superadmin" ? "Superadmin Dashboard" : "Admin Dashboard"}</h1>
           <p>
             Welcome, {user?.full_name || "Admin"}{" "}
             <span className="admin-small-text">({user?.role})</span>
@@ -415,31 +438,64 @@ export default function Admin() {
 
         <div className="admin-cards">
           <div className="admin-card">
-            <h2>{totalRequests}</h2>
+            <h2>{summary.totalRequests}</h2>
             <p>Total Requests</p>
           </div>
 
           <div className="admin-card">
-            <h2>{pendingRequests}</h2>
+            <h2>{summary.pendingRequests}</h2>
             <p>Pending</p>
           </div>
 
           <div className="admin-card">
-            <h2>{processingRequests}</h2>
+            <h2>{summary.processingRequests}</h2>
             <p>Processing</p>
           </div>
 
           <div className="admin-card">
-            <h2>{completedRequests}</h2>
+            <h2>{summary.completedRequests}</h2>
             <p>Completed</p>
           </div>
         </div>
+
+        {user?.role === "superadmin" && (
+          <div className="admin-table-container" style={{ marginBottom: "24px" }}>
+            <div className="admin-table-header">
+              <div>
+                <h2>Superadmin Controls</h2>
+                <p>Higher-level monitoring for reports, feedback, revenue, and system management.</p>
+              </div>
+            </div>
+
+            <div className="admin-cards" style={{ marginBottom: 0 }}>
+              <div className="admin-card">
+                <h2>{summary.paidRequests}</h2>
+                <p>Paid Transactions</p>
+              </div>
+
+              <div className="admin-card">
+                <h2>{formatAmount(summary.totalRevenue)}</h2>
+                <p>Total Collection</p>
+              </div>
+
+              <div className="admin-card" onClick={() => navigate("/reports")} style={{ cursor: "pointer" }}>
+                <h2>📊</h2>
+                <p>Open Reports</p>
+              </div>
+
+              <div className="admin-card" onClick={() => navigate("/feedback")} style={{ cursor: "pointer" }}>
+                <h2>⭐</h2>
+                <p>Open Feedback</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="admin-table-container">
           <div className="admin-table-header">
             <div>
               <h2>Document Requests</h2>
-              <p>View, verify, update, and schedule citizen document requests.</p>
+              <p>View, verify, update, upload, and schedule citizen document requests.</p>
             </div>
 
             <button type="button" onClick={fetchRequests} disabled={loading}>
@@ -472,12 +528,12 @@ export default function Admin() {
                     const requirementFileUrl = getFileUrl(
                       request.requirement_file_path || request.file_path
                     );
-
                     const paymentProofUrl = getFileUrl(
-                      request.payment_proof_file_path ||
-                        request.payment_proof_path
+                      request.payment_proof_file_path || request.payment_proof_path
                     );
-
+                    const releasedDocumentUrl = getFileUrl(
+                      request.released_document_file_path
+                    );
                     const applicantDetails = getApplicantDetails(request);
                     const documentName = getDocumentName(request);
 
@@ -494,12 +550,10 @@ export default function Admin() {
                           {applicantDetails.length > 0 && (
                             <details className="admin-details">
                               <summary>View filled details</summary>
-
                               <div className="admin-detail-list">
                                 {applicantDetails.map(([key, value]) => (
                                   <p key={key}>
-                                    <span>{key.replaceAll("_", " ")}:</span>{" "}
-                                    {String(value)}
+                                    <span>{key.replaceAll("_", " ")}:</span> {String(value)}
                                   </p>
                                 ))}
                               </div>
@@ -507,9 +561,7 @@ export default function Admin() {
                           )}
 
                           {request.receipt_number && (
-                            <p className="admin-small-text">
-                              Receipt: {request.receipt_number}
-                            </p>
+                            <p className="admin-small-text">Receipt: {request.receipt_number}</p>
                           )}
                         </td>
 
@@ -527,46 +579,21 @@ export default function Admin() {
                           </span>
 
                           <p className="admin-small-text">
-                            Total:{" "}
-                            {formatAmount(
-                              request.total_amount || request.amount_due
-                            )}
+                            Total: {formatAmount(request.total_amount || request.amount_due)}
                           </p>
 
-                          {request.document_fee !== undefined && (
-                            <p className="admin-small-text">
-                              Doc Fee: {formatAmount(request.document_fee)}
-                            </p>
+                          {request.payment_method && request.payment_method !== "None" && (
+                            <p className="admin-small-text">{request.payment_method}</p>
                           )}
-
-                          {request.system_fee !== undefined && (
-                            <p className="admin-small-text">
-                              System Fee: {formatAmount(request.system_fee)}
-                            </p>
-                          )}
-
-                          {request.payment_method &&
-                            request.payment_method !== "None" && (
-                              <p className="admin-small-text">
-                                {request.payment_method}
-                              </p>
-                            )}
 
                           {request.payment_reference && (
-                            <p className="admin-small-text">
-                              Ref: {request.payment_reference}
-                            </p>
+                            <p className="admin-small-text">Ref: {request.payment_reference}</p>
                           )}
                         </td>
 
                         <td>
                           {requirementFileUrl ? (
-                            <a
-                              href={requirementFileUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="admin-file-link"
-                            >
+                            <a href={requirementFileUrl} target="_blank" rel="noreferrer" className="admin-file-link">
                               Requirement
                             </a>
                           ) : (
@@ -574,35 +601,50 @@ export default function Admin() {
                           )}
 
                           {paymentProofUrl ? (
-                            <a
-                              href={paymentProofUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="admin-file-link"
-                            >
+                            <a href={paymentProofUrl} target="_blank" rel="noreferrer" className="admin-file-link">
                               Payment Proof
                             </a>
                           ) : (
                             <p className="admin-muted">No payment proof</p>
                           )}
+
+                          {releasedDocumentUrl ? (
+                            <a href={releasedDocumentUrl} target="_blank" rel="noreferrer" className="admin-file-link">
+                              Released Document
+                            </a>
+                          ) : (
+                            <p className="admin-muted">No released document</p>
+                          )}
+
+                          <div className="admin-actions" style={{ marginTop: "8px" }}>
+                            <input
+                              type="file"
+                              accept="image/*,.pdf"
+                              onChange={(e) =>
+                                setReleasedFiles((prev) => ({
+                                  ...prev,
+                                  [request.id]: e.target.files[0] || null,
+                                }))
+                              }
+                            />
+                            <button
+                              type="button"
+                              className="admin-pay-btn"
+                              onClick={() => uploadReleasedDocument(request.id)}
+                            >
+                              Upload Release
+                            </button>
+                          </div>
                         </td>
 
                         <td>
                           {request.pickup_date || request.appointment_date ? (
                             <div>
                               <p className="admin-small-text">
-                                Date:{" "}
-                                {formatDate(
-                                  request.pickup_date ||
-                                    request.appointment_date
-                                )}
+                                Date: {formatDate(request.pickup_date || request.appointment_date)}
                               </p>
                               <p className="admin-small-text">
-                                Time:{" "}
-                                {formatTime(
-                                  request.pickup_time ||
-                                    request.appointment_time
-                                )}
+                                Time: {formatTime(request.pickup_time || request.appointment_time)}
                               </p>
                             </div>
                           ) : (
@@ -613,32 +655,16 @@ export default function Admin() {
                             <input
                               type="date"
                               value={pickupInputs[request.id]?.pickup_date || ""}
-                              onChange={(e) =>
-                                updatePickupInput(
-                                  request.id,
-                                  "pickup_date",
-                                  e.target.value
-                                )
-                              }
+                              onChange={(e) => updatePickupInput(request.id, "pickup_date", e.target.value)}
                             />
 
                             <input
                               type="time"
                               value={pickupInputs[request.id]?.pickup_time || ""}
-                              onChange={(e) =>
-                                updatePickupInput(
-                                  request.id,
-                                  "pickup_time",
-                                  e.target.value
-                                )
-                              }
+                              onChange={(e) => updatePickupInput(request.id, "pickup_time", e.target.value)}
                             />
 
-                            <button
-                              type="button"
-                              className="admin-pay-btn"
-                              onClick={() => setPickupSchedule(request.id)}
-                            >
+                            <button type="button" className="admin-pay-btn" onClick={() => setPickupSchedule(request.id)}>
                               Set Pickup
                             </button>
                           </div>
@@ -648,33 +674,28 @@ export default function Admin() {
                           <div className="admin-actions">
                             <select
                               value={request.status || "Pending"}
-                              onChange={(e) =>
-                                updateStatus(request.id, e.target.value)
-                              }
+                              onChange={(e) => updateStatus(request.id, e.target.value)}
                             >
                               <option value="Pending">Pending</option>
                               <option value="Processing">Processing</option>
-                              <option value="Needs More Info">
-                                Needs More Info
-                              </option>
+                              <option value="Needs More Info">Needs More Info</option>
                               <option value="Approved">Approved</option>
-                              <option value="Ready for Pickup">
-                                Ready for Pickup
-                              </option>
+                              <option value="Ready for Pickup">Ready for Pickup</option>
                               <option value="Completed">Completed</option>
                               <option value="Rejected">Rejected</option>
                             </select>
 
-                            {request.payment_status !== "Paid" &&
-                              request.payment_status !== "Waived" && (
-                                <button
-                                  type="button"
-                                  className="admin-pay-btn"
-                                  onClick={() => updatePayment(request)}
-                                >
-                                  Mark Paid
-                                </button>
-                              )}
+                            {request.payment_status !== "Paid" && request.payment_status !== "Waived" && (
+                              <button type="button" className="admin-pay-btn" onClick={() => updatePayment(request, "Paid")}>
+                                Mark Paid
+                              </button>
+                            )}
+
+                            {request.payment_status !== "Waived" && (
+                              <button type="button" className="admin-pay-btn" onClick={() => updatePayment(request, "Waived")}>
+                                Waive Payment
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

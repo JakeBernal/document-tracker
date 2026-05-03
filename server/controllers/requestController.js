@@ -11,15 +11,43 @@ const query = (sql, params = []) => {
 
 const normalizePath = (file) => {
   if (!file) return null;
-  return file.path.replaceAll("\\", "/");
+
+  if (file.filename) {
+    return `uploads/${file.filename}`;
+  }
+
+  const rawPath = String(file.path || "").replaceAll("\\", "/");
+  const uploadsIndex = rawPath.indexOf("uploads/");
+
+  if (uploadsIndex !== -1) {
+    return rawPath.substring(uploadsIndex);
+  }
+
+  return rawPath;
 };
 
 const safeJsonParse = (value) => {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+
   try {
-    return value ? JSON.parse(value) : {};
+    return JSON.parse(value);
   } catch {
-    return value ? { raw: value } : {};
+    return { raw: value };
   }
+};
+
+const safeJsonStringify = (value) => {
+  if (!value) return JSON.stringify({});
+  if (typeof value === "string") {
+    try {
+      JSON.parse(value);
+      return value;
+    } catch {
+      return JSON.stringify({ raw: value });
+    }
+  }
+  return JSON.stringify(value);
 };
 
 const getFirstUploadedFile = (req, fieldName) => {
@@ -45,20 +73,34 @@ const allowedPaymentMethods = [
 
 const cleanPaymentMethod = (method) => {
   if (!method) return "None";
-  return allowedPaymentMethods.includes(method) ? method : "Other";
+
+  const normalized = String(method).trim();
+
+  if (normalized === "Onsite Payment") return "Cash";
+  if (normalized === "Maya") return "PayMaya";
+
+  return allowedPaymentMethods.includes(normalized) ? normalized : "Other";
+};
+
+const toNumber = (value, fallback = 0) => {
+  if (value === undefined || value === null || value === "") return fallback;
+  const numberValue = Number(value);
+  return Number.isNaN(numberValue) ? fallback : numberValue;
+};
+
+const nullIfEmpty = (value) => {
+  if (value === undefined || value === null || value === "") return null;
+  return value;
 };
 
 const generateReceiptNumber = () => {
   return `PT-${Date.now()}`;
 };
 
-// ================= NOTIFICATION HELPERS =================
-
 const createNotification = async (userId, requestId, title, message) => {
   try {
     await query(
-      `INSERT INTO notifications
-       (user_id, request_id, title, message)
+      `INSERT INTO notifications (user_id, request_id, title, message)
        VALUES (?, ?, ?, ?)`,
       [userId, requestId, title, message]
     );
@@ -70,9 +112,7 @@ const createNotification = async (userId, requestId, title, message) => {
 const notifyAdmins = async (requestId, title, message) => {
   try {
     const adminUsers = await query(
-      `SELECT id
-       FROM users
-       WHERE role IN ('admin', 'superadmin')`
+      `SELECT id FROM users WHERE role IN ('admin', 'superadmin')`
     );
 
     for (const admin of adminUsers) {
@@ -86,10 +126,7 @@ const notifyAdmins = async (requestId, title, message) => {
 const getCitizenName = async (userId) => {
   try {
     const rows = await query(
-      `SELECT full_name
-       FROM users
-       WHERE id = ?
-       LIMIT 1`,
+      `SELECT full_name FROM users WHERE id = ? LIMIT 1`,
       [userId]
     );
 
@@ -99,7 +136,6 @@ const getCitizenName = async (userId) => {
   }
 };
 
-// ================= CREATE REQUEST =================
 exports.createRequest = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -118,9 +154,7 @@ exports.createRequest = async (req, res) => {
     } = req.body;
 
     if (!document_type_id) {
-      return res.status(400).json({
-        message: "Document type is required.",
-      });
+      return res.status(400).json({ message: "Document type is required." });
     }
 
     const parsedNotes = safeJsonParse(notes);
@@ -140,24 +174,16 @@ exports.createRequest = async (req, res) => {
     const finalReceiptNumber =
       receipt_number || parsedNotes.receipt_number || generateReceiptNumber();
 
-    const finalDocumentFee = Number(
-      document_fee || parsedNotes.document_fee || 0
+    const finalDocumentFee = toNumber(document_fee || parsedNotes.document_fee);
+    const finalSystemFee = toNumber(system_fee || parsedNotes.system_fee);
+    const finalDiscountAmount = toNumber(
+      discount_amount || parsedNotes.discount_amount
     );
-
-    const finalSystemFee = Number(system_fee || parsedNotes.system_fee || 0);
-
-    const finalDiscountAmount = Number(
-      discount_amount || parsedNotes.discount_amount || 0
+    const finalTotalAmount = toNumber(
+      total_amount || parsedNotes.total_amount || amount_due
     );
-
-    const finalTotalAmount = Number(
-      total_amount || parsedNotes.total_amount || amount_due || 0
-    );
-
     const finalPaymentReference =
       payment_reference || parsedNotes.payment_reference_number || null;
-
-    const paymentStatus = "Unpaid";
 
     const insertRequestSql = `
       INSERT INTO requests
@@ -178,13 +204,12 @@ exports.createRequest = async (req, res) => {
         notes,
         form_data
       )
-      VALUES (?, ?, 'Pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, 'Pending', 'Unpaid', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const requestResult = await query(insertRequestSql, [
       userId,
       document_type_id,
-      paymentStatus,
       finalPaymentMethod,
       finalPaymentReference,
       finalReceiptNumber,
@@ -195,7 +220,7 @@ exports.createRequest = async (req, res) => {
       finalTotalAmount,
       paymentProofPath,
       notes || null,
-      JSON.stringify(parsedNotes),
+      safeJsonStringify(parsedNotes),
     ]);
 
     const requestId = requestResult.insertId;
@@ -243,9 +268,7 @@ exports.createRequest = async (req, res) => {
 
     const citizenName = await getCitizenName(userId);
     const documentName =
-      parsedNotes.document_name ||
-      parsedNotes.parent_document ||
-      "a document request";
+      parsedNotes.document_name || parsedNotes.parent_document || "a document request";
 
     await createNotification(
       userId,
@@ -274,7 +297,6 @@ exports.createRequest = async (req, res) => {
   }
 };
 
-// ================= GET MY REQUESTS =================
 exports.getMyRequests = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -284,19 +306,20 @@ exports.getMyRequests = async (req, res) => {
           r.*,
           dt.name AS document_name,
           (
-            SELECT file_path
-            FROM uploads
+            SELECT file_path FROM uploads
             WHERE request_id = r.id AND upload_type = 'requirement'
-            ORDER BY id DESC
-            LIMIT 1
+            ORDER BY id DESC LIMIT 1
           ) AS requirement_file_path,
           (
-            SELECT file_path
-            FROM uploads
+            SELECT file_path FROM uploads
             WHERE request_id = r.id AND upload_type = 'payment_proof'
-            ORDER BY id DESC
-            LIMIT 1
+            ORDER BY id DESC LIMIT 1
           ) AS payment_proof_file_path,
+          (
+            SELECT file_path FROM uploads
+            WHERE request_id = r.id AND upload_type = 'released_document'
+            ORDER BY id DESC LIMIT 1
+          ) AS released_document_file_path,
           a.appointment_date,
           a.appointment_time,
           a.status AS appointment_status
@@ -309,34 +332,27 @@ exports.getMyRequests = async (req, res) => {
     );
 
     const formatted = results.map((request) => {
-      let documentName = request.document_name;
-
-      if (!documentName && request.form_data) {
-        try {
-          const formData =
-            typeof request.form_data === "string"
-              ? JSON.parse(request.form_data)
-              : request.form_data;
-
-          documentName =
-            formData.document_name || formData.parent_document || null;
-        } catch {}
-      }
+      const formData = safeJsonParse(request.form_data);
+      const documentName =
+        request.document_name ||
+        formData.document_name ||
+        formData.parent_document ||
+        "Document Request";
 
       return {
         ...request,
-        document_name: documentName || "Document Request",
+        document_name: documentName,
+        form_data: formData,
       };
     });
 
     return res.status(200).json({ requests: formatted });
   } catch (err) {
     console.error("GET MY REQUESTS ERROR:", err);
-    return res.status(500).json({ message: "Database error" });
+    return res.status(500).json({ message: "Database error", error: err.message });
   }
 };
 
-// ================= GET SINGLE REQUEST =================
 exports.getRequestById = async (req, res) => {
   try {
     const requestId = req.params.id;
@@ -348,19 +364,20 @@ exports.getRequestById = async (req, res) => {
           u.full_name AS citizen_name,
           u.email,
           (
-            SELECT file_path
-            FROM uploads
+            SELECT file_path FROM uploads
             WHERE request_id = r.id AND upload_type = 'requirement'
-            ORDER BY id DESC
-            LIMIT 1
+            ORDER BY id DESC LIMIT 1
           ) AS requirement_file_path,
           (
-            SELECT file_path
-            FROM uploads
+            SELECT file_path FROM uploads
             WHERE request_id = r.id AND upload_type = 'payment_proof'
-            ORDER BY id DESC
-            LIMIT 1
+            ORDER BY id DESC LIMIT 1
           ) AS payment_proof_file_path,
+          (
+            SELECT file_path FROM uploads
+            WHERE request_id = r.id AND upload_type = 'released_document'
+            ORDER BY id DESC LIMIT 1
+          ) AS released_document_file_path,
           a.appointment_date,
           a.appointment_time,
           a.status AS appointment_status
@@ -386,14 +403,22 @@ exports.getRequestById = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized access" });
     }
 
+    request.form_data = safeJsonParse(request.form_data);
+
+    if (!request.document_name) {
+      request.document_name =
+        request.form_data.document_name ||
+        request.form_data.parent_document ||
+        "Document Request";
+    }
+
     return res.status(200).json({ request });
   } catch (err) {
     console.error("GET REQUEST ERROR:", err);
-    return res.status(500).json({ message: "Database error" });
+    return res.status(500).json({ message: "Database error", error: err.message });
   }
 };
 
-// ================= GET ALL REQUESTS =================
 exports.getAllRequests = async (req, res) => {
   try {
     const results = await query(
@@ -403,19 +428,20 @@ exports.getAllRequests = async (req, res) => {
           u.email,
           dt.name AS document_name,
           (
-            SELECT file_path
-            FROM uploads
+            SELECT file_path FROM uploads
             WHERE request_id = r.id AND upload_type = 'requirement'
-            ORDER BY id DESC
-            LIMIT 1
+            ORDER BY id DESC LIMIT 1
           ) AS requirement_file_path,
           (
-            SELECT file_path
-            FROM uploads
+            SELECT file_path FROM uploads
             WHERE request_id = r.id AND upload_type = 'payment_proof'
-            ORDER BY id DESC
-            LIMIT 1
+            ORDER BY id DESC LIMIT 1
           ) AS payment_proof_file_path,
+          (
+            SELECT file_path FROM uploads
+            WHERE request_id = r.id AND upload_type = 'released_document'
+            ORDER BY id DESC LIMIT 1
+          ) AS released_document_file_path,
           a.appointment_date,
           a.appointment_time,
           a.status AS appointment_status
@@ -426,14 +452,151 @@ exports.getAllRequests = async (req, res) => {
        ORDER BY r.created_at DESC`
     );
 
-    return res.status(200).json({ requests: results });
+    const formatted = results.map((request) => {
+      const formData = safeJsonParse(request.form_data);
+      return {
+        ...request,
+        form_data: formData,
+        document_name:
+          request.document_name ||
+          formData.document_name ||
+          formData.parent_document ||
+          "Document Request",
+      };
+    });
+
+    return res.status(200).json({ requests: formatted });
   } catch (err) {
     console.error("GET ALL REQUESTS ERROR:", err);
-    return res.status(500).json({ message: "Database error" });
+    return res.status(500).json({ message: "Database error", error: err.message });
   }
 };
 
-// ================= UPDATE STATUS =================
+exports.updateRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const requestRows = await query(
+      `SELECT * FROM requests WHERE id = ? AND user_id = ? LIMIT 1`,
+      [id, userId]
+    );
+
+    if (requestRows.length === 0) {
+      return res.status(404).json({
+        message: "Request not found or you are not the owner.",
+      });
+    }
+
+    const existing = requestRows[0];
+    const editableStatuses = ["Pending", "Needs More Info"];
+
+    if (!editableStatuses.includes(existing.status)) {
+      return res.status(403).json({
+        message: `You cannot edit a request with status: ${existing.status}. Only Pending or Needs More Info requests can be edited.`,
+      });
+    }
+
+    const oldFormData = safeJsonParse(existing.form_data);
+    const incomingFormData = safeJsonParse(req.body.form_data);
+
+    const mergedFormData = {
+      ...oldFormData,
+      ...incomingFormData,
+      fields: {
+        ...(oldFormData.fields && typeof oldFormData.fields === "object"
+          ? oldFormData.fields
+          : {}),
+        ...(incomingFormData.fields && typeof incomingFormData.fields === "object"
+          ? incomingFormData.fields
+          : {}),
+      },
+    };
+
+    if (req.body.document_name) {
+      mergedFormData.document_name = req.body.document_name;
+    }
+
+    const finalPaymentMethod = cleanPaymentMethod(
+      req.body.payment_method_for_database ||
+        incomingFormData.payment_method_for_database ||
+        req.body.payment_method ||
+        incomingFormData.payment_method ||
+        existing.payment_method
+    );
+
+    mergedFormData.payment_method_for_database = finalPaymentMethod;
+    mergedFormData.payment_method =
+      req.body.payment_method || incomingFormData.payment_method || finalPaymentMethod;
+
+    const finalNotes = req.body.notes || existing.notes || safeJsonStringify(mergedFormData);
+
+    const result = await query(
+      `UPDATE requests
+       SET notes = ?,
+           form_data = ?,
+           payment_method = ?
+       WHERE id = ? AND user_id = ?`,
+      [
+        finalNotes,
+        safeJsonStringify(mergedFormData),
+        finalPaymentMethod,
+        id,
+        userId,
+      ]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Request not found." });
+    }
+
+    const newFile =
+      getFirstUploadedFile(req, "uploaded_file") || getFirstUploadedFile(req, "file");
+
+    if (newFile) {
+      const newFilePath = normalizePath(newFile);
+
+      await query(
+        `INSERT INTO uploads (request_id, file_path, upload_type)
+         VALUES (?, ?, 'requirement')`,
+        [id, newFilePath]
+      );
+    }
+
+    await createNotification(
+      userId,
+      id,
+      "Request Updated",
+      "Your document request has been updated successfully."
+    );
+
+    const citizenName = await getCitizenName(userId);
+    const documentName =
+      mergedFormData.document_name || mergedFormData.parent_document || "a document request";
+
+    await notifyAdmins(
+      id,
+      "Request Edited by Citizen",
+      `${citizenName} updated ${documentName} request #${id}.`
+    );
+
+    return res.status(200).json({
+      message: "Request updated successfully.",
+      request: {
+        id: Number(id),
+        form_data: mergedFormData,
+        payment_method: finalPaymentMethod,
+      },
+    });
+  } catch (err) {
+    console.error("UPDATE REQUEST ERROR:", err);
+    return res.status(500).json({
+      message: "Database error",
+      error: err.message,
+    });
+  }
+};
+
 exports.updateStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -463,10 +626,7 @@ exports.updateStatus = async (req, res) => {
     }
 
     const requestRows = await query(
-      `SELECT
-          r.user_id,
-          u.full_name AS citizen_name,
-          dt.name AS document_name
+      `SELECT r.user_id, u.full_name AS citizen_name, dt.name AS document_name, r.form_data
        FROM requests r
        LEFT JOIN users u ON r.user_id = u.id
        LEFT JOIN document_types dt ON r.document_type_id = dt.id
@@ -476,8 +636,10 @@ exports.updateStatus = async (req, res) => {
 
     if (requestRows.length > 0) {
       const request = requestRows[0];
+      const formData = safeJsonParse(request.form_data);
       const citizenName = request.citizen_name || "A citizen";
-      const documentName = request.document_name || "a document request";
+      const documentName =
+        request.document_name || formData.document_name || formData.parent_document || "a document request";
 
       await createNotification(
         request.user_id,
@@ -496,11 +658,10 @@ exports.updateStatus = async (req, res) => {
     return res.json({ message: "Status updated!" });
   } catch (err) {
     console.error("UPDATE STATUS ERROR:", err);
-    return res.status(500).json({ message: "Database error" });
+    return res.status(500).json({ message: "Database error", error: err.message });
   }
 };
 
-// ================= UPDATE PAYMENT =================
 exports.updatePayment = async (req, res) => {
   try {
     const { id } = req.params;
@@ -522,6 +683,11 @@ exports.updatePayment = async (req, res) => {
     }
 
     const finalPaymentMethod = cleanPaymentMethod(payment_method);
+    const finalAmountDue = toNumber(amount_due);
+    const finalDocumentFee = toNumber(document_fee);
+    const finalSystemFee = toNumber(system_fee);
+    const finalDiscountAmount = toNumber(discount_amount);
+    const finalTotalAmount = toNumber(total_amount, finalAmountDue);
 
     const result = await query(
       `UPDATE requests
@@ -538,12 +704,12 @@ exports.updatePayment = async (req, res) => {
       [
         payment_status,
         finalPaymentMethod,
-        payment_reference || null,
-        amount_due || 0,
-        document_fee || 0,
-        system_fee || 0,
-        discount_amount || 0,
-        total_amount || amount_due || 0,
+        nullIfEmpty(payment_reference),
+        finalAmountDue,
+        finalDocumentFee,
+        finalSystemFee,
+        finalDiscountAmount,
+        finalTotalAmount,
         payment_status === "Paid" ? new Date() : null,
         id,
       ]
@@ -553,11 +719,28 @@ exports.updatePayment = async (req, res) => {
       return res.status(404).json({ message: "Request not found" });
     }
 
+    await query(
+      `UPDATE receipts
+       SET document_fee = ?,
+           system_fee = ?,
+           discount_amount = ?,
+           total_amount = ?,
+           payment_method = ?,
+           payment_reference = ?
+       WHERE request_id = ?`,
+      [
+        finalDocumentFee,
+        finalSystemFee,
+        finalDiscountAmount,
+        finalTotalAmount,
+        finalPaymentMethod,
+        nullIfEmpty(payment_reference),
+        id,
+      ]
+    );
+
     const requestRows = await query(
-      `SELECT
-          r.user_id,
-          u.full_name AS citizen_name,
-          dt.name AS document_name
+      `SELECT r.user_id, u.full_name AS citizen_name, dt.name AS document_name, r.form_data
        FROM requests r
        LEFT JOIN users u ON r.user_id = u.id
        LEFT JOIN document_types dt ON r.document_type_id = dt.id
@@ -567,8 +750,10 @@ exports.updatePayment = async (req, res) => {
 
     if (requestRows.length > 0) {
       const request = requestRows[0];
+      const formData = safeJsonParse(request.form_data);
       const citizenName = request.citizen_name || "A citizen";
-      const documentName = request.document_name || "a document request";
+      const documentName =
+        request.document_name || formData.document_name || formData.parent_document || "a document request";
 
       await createNotification(
         request.user_id,
@@ -587,11 +772,10 @@ exports.updatePayment = async (req, res) => {
     return res.json({ message: "Payment updated!" });
   } catch (err) {
     console.error("UPDATE PAYMENT ERROR:", err);
-    return res.status(500).json({ message: "Database error" });
+    return res.status(500).json({ message: "Database error", error: err.message });
   }
 };
 
-// ================= SET PICKUP APPOINTMENT =================
 exports.setPickupAppointment = async (req, res) => {
   try {
     const { id } = req.params;
@@ -604,10 +788,7 @@ exports.setPickupAppointment = async (req, res) => {
     }
 
     const requestRows = await query(
-      `SELECT
-          r.user_id,
-          u.full_name AS citizen_name,
-          dt.name AS document_name
+      `SELECT r.user_id, u.full_name AS citizen_name, dt.name AS document_name, r.form_data
        FROM requests r
        LEFT JOIN users u ON r.user_id = u.id
        LEFT JOIN document_types dt ON r.document_type_id = dt.id
@@ -619,30 +800,29 @@ exports.setPickupAppointment = async (req, res) => {
       return res.status(404).json({ message: "Request not found" });
     }
 
-    const userId = requestRows[0].user_id;
-    const citizenName = requestRows[0].citizen_name || "A citizen";
-    const documentName = requestRows[0].document_name || "a document request";
+    const request = requestRows[0];
+    const formData = safeJsonParse(request.form_data);
+    const userId = request.user_id;
+    const citizenName = request.citizen_name || "A citizen";
+    const documentName =
+      request.document_name || formData.document_name || formData.parent_document || "a document request";
 
     await query(
       `UPDATE requests
-       SET pickup_date = ?,
-           pickup_time = ?,
-           status = 'Ready for Pickup'
+       SET pickup_date = ?, pickup_time = ?, status = 'Ready for Pickup'
        WHERE id = ?`,
       [pickup_date, pickup_time, id]
     );
 
     const appointmentRows = await query(
-      "SELECT id FROM appointments WHERE request_id = ?",
+      "SELECT id FROM appointments WHERE request_id = ? LIMIT 1",
       [id]
     );
 
     if (appointmentRows.length > 0) {
       await query(
         `UPDATE appointments
-         SET appointment_date = ?,
-             appointment_time = ?,
-             status = 'Rescheduled'
+         SET appointment_date = ?, appointment_time = ?, status = 'Rescheduled'
          WHERE request_id = ?`,
         [pickup_date, pickup_time, id]
       );
@@ -668,25 +848,19 @@ exports.setPickupAppointment = async (req, res) => {
       `${citizenName}'s ${documentName} pickup was scheduled on ${pickup_date} at ${pickup_time}.`
     );
 
-    return res.json({
-      message: "Pickup appointment scheduled successfully!",
-    });
+    return res.json({ message: "Pickup appointment scheduled successfully!" });
   } catch (err) {
     console.error("SET PICKUP APPOINTMENT ERROR:", err);
-    return res.status(500).json({ message: "Database error" });
+    return res.status(500).json({ message: "Database error", error: err.message });
   }
 };
 
-// ================= GET MY APPOINTMENTS =================
 exports.getMyAppointments = async (req, res) => {
   try {
     const userId = req.user.id;
 
     const results = await query(
-      `SELECT
-          a.*,
-          r.status AS request_status,
-          dt.name AS document_name
+      `SELECT a.*, r.status AS request_status, dt.name AS document_name, r.form_data
        FROM appointments a
        LEFT JOIN requests r ON a.request_id = r.id
        LEFT JOIN document_types dt ON r.document_type_id = dt.id
@@ -695,23 +869,29 @@ exports.getMyAppointments = async (req, res) => {
       [userId]
     );
 
-    return res.json({ appointments: results });
+    const appointments = results.map((appointment) => {
+      const formData = safeJsonParse(appointment.form_data);
+      return {
+        ...appointment,
+        document_name:
+          appointment.document_name ||
+          formData.document_name ||
+          formData.parent_document ||
+          "Document Request",
+      };
+    });
+
+    return res.json({ appointments });
   } catch (err) {
     console.error("GET MY APPOINTMENTS ERROR:", err);
-    return res.status(500).json({ message: "Database error" });
+    return res.status(500).json({ message: "Database error", error: err.message });
   }
 };
 
-// ================= GET ALL APPOINTMENTS =================
 exports.getAllAppointments = async (req, res) => {
   try {
     const results = await query(
-      `SELECT
-          a.*,
-          u.full_name AS citizen_name,
-          u.email,
-          r.status AS request_status,
-          dt.name AS document_name
+      `SELECT a.*, u.full_name AS citizen_name, u.email, r.status AS request_status, dt.name AS document_name, r.form_data
        FROM appointments a
        LEFT JOIN users u ON a.user_id = u.id
        LEFT JOIN requests r ON a.request_id = r.id
@@ -719,14 +899,25 @@ exports.getAllAppointments = async (req, res) => {
        ORDER BY a.appointment_date ASC, a.appointment_time ASC`
     );
 
-    return res.json({ appointments: results });
+    const appointments = results.map((appointment) => {
+      const formData = safeJsonParse(appointment.form_data);
+      return {
+        ...appointment,
+        document_name:
+          appointment.document_name ||
+          formData.document_name ||
+          formData.parent_document ||
+          "Document Request",
+      };
+    });
+
+    return res.json({ appointments });
   } catch (err) {
     console.error("GET ALL APPOINTMENTS ERROR:", err);
-    return res.status(500).json({ message: "Database error" });
+    return res.status(500).json({ message: "Database error", error: err.message });
   }
 };
 
-// ================= FILE UPLOAD FOR EXISTING REQUEST =================
 exports.uploadFile = async (req, res) => {
   try {
     const { id } = req.params;
@@ -744,10 +935,7 @@ exports.uploadFile = async (req, res) => {
     );
 
     const requestRows = await query(
-      `SELECT
-          r.user_id,
-          u.full_name AS citizen_name,
-          dt.name AS document_name
+      `SELECT r.user_id, u.full_name AS citizen_name, dt.name AS document_name, r.form_data
        FROM requests r
        LEFT JOIN users u ON r.user_id = u.id
        LEFT JOIN document_types dt ON r.document_type_id = dt.id
@@ -757,8 +945,10 @@ exports.uploadFile = async (req, res) => {
 
     if (requestRows.length > 0) {
       const request = requestRows[0];
+      const formData = safeJsonParse(request.form_data);
       const citizenName = request.citizen_name || "A citizen";
-      const documentName = request.document_name || "a document request";
+      const documentName =
+        request.document_name || formData.document_name || formData.parent_document || "a document request";
 
       await createNotification(
         request.user_id,
@@ -774,12 +964,9 @@ exports.uploadFile = async (req, res) => {
       );
     }
 
-    return res.json({
-      message: "File uploaded successfully!",
-      filePath,
-    });
+    return res.json({ message: "File uploaded successfully!", filePath });
   } catch (err) {
     console.error("FILE UPLOAD ERROR:", err);
-    return res.status(500).json({ message: "Database error" });
+    return res.status(500).json({ message: "Database error", error: err.message });
   }
 };

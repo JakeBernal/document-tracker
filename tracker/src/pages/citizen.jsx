@@ -220,18 +220,33 @@ export default function UserDashboard() {
     });
   };
 
+  // FIX: Single correct getFileUrl — strips absolute Windows paths,
+  // always returns http://localhost:5001/uploads/filename.ext
   const getFileUrl = (filePath) => {
-    if (!filePath) {
-      return null;
-    }
+    if (!filePath) return null;
 
-    const cleanPath = String(filePath).replaceAll("\\", "/");
+    let cleanPath = String(filePath).replaceAll("\\", "/");
 
-    if (cleanPath.startsWith("http")) {
-      return cleanPath;
+    // If it's already a full URL, return as-is
+    if (cleanPath.startsWith("http")) return cleanPath;
+
+    // Strip any absolute path prefix, keep only uploads/filename
+    const uploadsIndex = cleanPath.indexOf("uploads/");
+    if (uploadsIndex !== -1) {
+      cleanPath = cleanPath.substring(uploadsIndex); // → "uploads/filename.png"
     }
 
     return `http://localhost:5001/${cleanPath}`;
+    // → "http://localhost:5001/uploads/filename.png" ✓
+  };
+
+  // FIX: was missing entirely — caused "getPaymentProofUrl is not defined" error
+  const getPaymentProofUrl = (request) => {
+    return getFileUrl(
+      request.payment_proof_file_path ||
+        request.payment_proof_path ||
+        null
+    );
   };
 
   const getRequirementFileUrl = (request) => {
@@ -240,12 +255,6 @@ export default function UserDashboard() {
         request.file_path ||
         request.uploaded_file ||
         null
-    );
-  };
-
-  const getPaymentProofUrl = (request) => {
-    return getFileUrl(
-      request.payment_proof_file_path || request.payment_proof_path || null
     );
   };
 
@@ -330,6 +339,10 @@ export default function UserDashboard() {
       request.status === "Ready for Pickup"
   ).length;
 
+  const handleEditRequest = (requestId) => {
+    navigate(`/EditRequest/${requestId}`);
+  };
+
   return (
     <>
       <Navbar />
@@ -410,6 +423,7 @@ export default function UserDashboard() {
                     <th>Fee</th>
                     <th>Payment</th>
                     <th>Files / Receipt / Feedback</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
 
@@ -424,17 +438,14 @@ export default function UserDashboard() {
                         <tr key={request.id}>
                           <td>
                             <strong>{getDocumentName(request)}</strong>
-
                             {request.receipt_number && (
                               <p className="request-note">
                                 Receipt: {request.receipt_number}
                               </p>
                             )}
-
                             {applicantDetails.length > 0 && (
                               <details className="request-details">
                                 <summary>View details</summary>
-
                                 <div className="request-detail-list">
                                   {applicantDetails.map(([key, value]) => (
                                     <p key={key}>
@@ -463,8 +474,7 @@ export default function UserDashboard() {
                           </td>
 
                           <td>
-                            {request.pickup_date ||
-                            request.appointment_date ? (
+                            {request.pickup_date || request.appointment_date ? (
                               <>
                                 <p className="payment-method">
                                   {formatDate(
@@ -487,7 +497,9 @@ export default function UserDashboard() {
                           </td>
 
                           <td>
-                            <strong>{formatAmount(getDisplayAmount(request))}</strong>
+                            <strong>
+                              {formatAmount(getDisplayAmount(request))}
+                            </strong>
 
                             {request.document_fee !== undefined && (
                               <p className="request-note">
@@ -555,7 +567,9 @@ export default function UserDashboard() {
                             <button
                               type="button"
                               className="view-file-link receipt-link-btn"
-                              onClick={() => navigate(`/receipt/${request.id}`)}
+                              onClick={() =>
+                                navigate(`/receipt/${request.id}`)
+                              }
                             >
                               View Receipt
                             </button>
@@ -570,12 +584,30 @@ export default function UserDashboard() {
                               </button>
                             )}
                           </td>
+
+                          <td>
+                            {/* Only show Edit button for editable statuses */}
+                            {["Pending", "Needs More Info"].includes(
+                              request.status
+                            ) ? (
+                              <button
+                                type="button"
+                                className="edit-btn"
+                                onClick={() => handleEditRequest(request.id)}
+                              >
+                                Edit Request
+                              </button>
+                            ) : (
+                              <span className="no-file-text">—</span>
+                            )}
+                          </td>
                         </tr>
                       );
                     })
                   ) : (
                     <tr>
-                      <td colSpan="7" className="no-requests">
+                      {/* FIX: colSpan updated to 8 to match 8 columns */}
+                      <td colSpan="8" className="no-requests">
                         No requests found
                       </td>
                     </tr>

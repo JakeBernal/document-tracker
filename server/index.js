@@ -13,6 +13,7 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const receiptRoutes = require("./routes/receiptRoutes");
 const reportRoutes = require("./routes/reportRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
+const superadminRoutes = require("./routes/superadminRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -57,8 +58,6 @@ app.get("/api/health", (req, res) => {
 });
 
 // ================= AUTH ROUTES =================
-
-// REGISTER
 app.post("/api/register", async (req, res) => {
   const { full_name, email, password } = req.body;
 
@@ -106,7 +105,6 @@ app.post("/api/register", async (req, res) => {
   }
 });
 
-// LOGIN
 app.post("/api/login", (req, res) => {
   const { email, password } = req.body;
 
@@ -186,6 +184,7 @@ app.use("/api", notificationRoutes);
 app.use("/api", receiptRoutes);
 app.use("/api", reportRoutes);
 app.use("/api", feedbackRoutes);
+app.use("/api", superadminRoutes);
 
 // ================= 404 HANDLER =================
 app.use((req, res) => {

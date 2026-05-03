@@ -2,17 +2,17 @@ import { Navigate } from "react-router-dom";
 
 export default function AdminRoute({ children }) {
   let user = null;
+  const token = localStorage.getItem("token");
 
   try {
     user = JSON.parse(localStorage.getItem("user") || "null");
-  } catch (error) {
+  } catch {
     localStorage.removeItem("user");
     localStorage.removeItem("token");
-
     return <Navigate to="/signin" replace />;
   }
 
-  if (!user) {
+  if (!user || !token) {
     return <Navigate to="/signin" replace />;
   }
 

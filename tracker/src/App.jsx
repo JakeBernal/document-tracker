@@ -12,6 +12,7 @@ import Calendar from "./pages/calendar";
 import Receipt from "./pages/receipt";
 import Reports from "./pages/reports";
 import Feedback from "./pages/feedback";
+import EditRequest from "./pages/EditRequest";
 
 import AdminRoute from "./routes/AdminRoute";
 
@@ -25,11 +26,14 @@ function App() {
 
       {/* Citizen routes */}
       <Route path="/citizen" element={<Citizen />} />
+      <Route path="/dashboard" element={<Navigate to="/citizen" replace />} />
       <Route path="/documents" element={<Documents />} />
       <Route path="/request" element={<RequestForm />} />
       <Route path="/checkout" element={<Checkout />} />
       <Route path="/calendar" element={<Calendar />} />
       <Route path="/receipt/:requestId" element={<Receipt />} />
+      <Route path="/edit-request/:id" element={<EditRequest />} />
+      <Route path="/EditRequest/:id" element={<EditRequest />} />
 
       {/* Admin / Superadmin protected routes */}
       <Route

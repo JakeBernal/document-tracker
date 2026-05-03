@@ -13,14 +13,17 @@ export default function Navbar() {
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
 
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (error) {
-        localStorage.removeItem("user");
-        localStorage.removeItem("token");
-        setUser(null);
-      }
+    if (!storedUser) {
+      setUser(null);
+      return;
+    }
+
+    try {
+      setUser(JSON.parse(storedUser));
+    } catch (error) {
+      localStorage.removeItem("user");
+      localStorage.removeItem("token");
+      setUser(null);
     }
   }, []);
 
@@ -38,124 +41,110 @@ export default function Navbar() {
     };
   }, []);
 
-  const isAdminUser = user?.role === "admin" || user?.role === "superadmin";
+  const isCitizen = user?.role === "citizen";
+  const isAdmin = user?.role === "admin";
+  const isSuperadmin = user?.role === "superadmin";
+  const isAdminUser = isAdmin || isSuperadmin;
+
+  const firstLetter = user?.full_name
+    ? user.full_name.charAt(0).toUpperCase()
+    : "U";
+
+  const displayRole = isSuperadmin
+    ? "Super Admin"
+    : isAdmin
+    ? "Admin"
+    : "Citizen";
 
   const handleLogout = () => {
     localStorage.removeItem("user");
     localStorage.removeItem("token");
     setUser(null);
     setOpen(false);
-    navigate("/signin");
+    navigate("/signin", { replace: true });
   };
 
-  const scrollToServices = () => {
-    if (window.location.pathname !== "/") {
-      navigate("/");
-
-      setTimeout(() => {
-        const services = document.getElementById("services");
-
-        if (services) {
-          services.scrollIntoView({ behavior: "smooth" });
-        }
-      }, 100);
-
-      return;
-    }
-
-    const services = document.getElementById("services");
-
-    if (services) {
-      services.scrollIntoView({ behavior: "smooth" });
-    }
-  };
-
-  const scrollToAbout = () => {
-    if (window.location.pathname !== "/") {
-      navigate("/");
-
-      setTimeout(() => {
-        const about = document.getElementById("about");
-
-        if (about) {
-          about.scrollIntoView({ behavior: "smooth" });
-        }
-      }, 100);
-
-      return;
-    }
-
-    const about = document.getElementById("about");
-
-    if (about) {
-      about.scrollIntoView({ behavior: "smooth" });
-    }
-  };
-
-  const scrollToContact = () => {
-    if (window.location.pathname !== "/") {
-      navigate("/");
-
-      setTimeout(() => {
-        const contact = document.getElementById("contact");
-
-        if (contact) {
-          contact.scrollIntoView({ behavior: "smooth" });
-        }
-      }, 100);
-
-      return;
-    }
-
-    const contact = document.getElementById("contact");
-
-    if (contact) {
-      contact.scrollIntoView({ behavior: "smooth" });
-    }
+  const goTo = (path) => {
+    setOpen(false);
+    navigate(path);
   };
 
   const goToDashboard = () => {
     if (!user) {
-      navigate("/signin");
+      goTo("/signin");
       return;
     }
 
-    if (isAdminUser) {
-      navigate("/admin");
+    if (isSuperadmin) {
+      goTo("/superadmin");
       return;
     }
 
-    navigate("/citizen");
+    if (isAdmin) {
+      goTo("/admin");
+      return;
+    }
+
+    goTo("/citizen");
   };
 
-  const firstLetter = user?.full_name
-    ? user.full_name.charAt(0).toUpperCase()
-    : "U";
+  const scrollToSection = (id) => {
+    setOpen(false);
+
+    if (window.location.pathname !== "/") {
+      navigate("/");
+
+      setTimeout(() => {
+        const section = document.getElementById(id);
+
+        if (section) {
+          section.scrollIntoView({ behavior: "smooth" });
+        }
+      }, 120);
+
+      return;
+    }
+
+    const section = document.getElementById(id);
+
+    if (section) {
+      section.scrollIntoView({ behavior: "smooth" });
+    }
+  };
 
   return (
     <nav className="navbar">
-      <div className="logo" onClick={() => navigate("/")}>
-        <img className="img" src="/logo.png" alt="Logo" />
+      <button
+        type="button"
+        className="logo"
+        onClick={() => navigate("/")}
+        aria-label="Go to homepage"
+      >
+        <img className="img" src="/logo.png" alt="PaperTrail logo" />
 
         <span>
           PaperTrail
           <br />
           Digital Solutions
         </span>
-      </div>
+      </button>
 
       <div className="nav-txt">
         <ul>
           <li onClick={() => navigate("/")}>Home</li>
-          <li onClick={scrollToServices}>Services</li>
-          <li onClick={scrollToAbout}>About</li>
-          <li onClick={scrollToContact}>Contact</li>
+          <li onClick={() => scrollToSection("services")}>Services</li>
+          <li onClick={() => scrollToSection("about")}>About</li>
+          <li onClick={() => scrollToSection("contact")}>Contact</li>
         </ul>
       </div>
 
       <div className="nav-actions">
         {!user ? (
-          <button className="btn-signin" onClick={() => navigate("/signin")}>
+          <button
+            type="button"
+            className="btn-signin"
+            onClick={() => navigate("/signin")}
+          >
             Sign In
           </button>
         ) : (
@@ -167,6 +156,7 @@ export default function Navbar() {
                 type="button"
                 className="profile"
                 onClick={() => setOpen((prev) => !prev)}
+                aria-label="Open account menu"
               >
                 <div className="avatar">{firstLetter}</div>
               </button>
@@ -174,52 +164,95 @@ export default function Navbar() {
               {open && (
                 <div className="dropdown">
                   <div className="dropdown-header">
-                    <p className="user-name">{user.full_name}</p>
-                    <small className="user-email">{user.email}</small>
-                    <small className="user-email"></small>
+                    <div className="dropdown-avatar">{firstLetter}</div>
+
+                    <div className="dropdown-user-info">
+                      <p className="user-name">{user.full_name}</p>
+                      <small className="user-email">{user.email}</small>
+                      <span className="role-badge">{displayRole}</span>
+                    </div>
                   </div>
 
                   <hr />
 
-                  <p onClick={goToDashboard}>Dashboard</p>
+                  <button
+                    type="button"
+                    className="dropdown-item"
+                    onClick={goToDashboard}
+                  >
+                    <span className="menu-icon">📊</span>
+                    <span className="menu-text">
+                      {isSuperadmin
+                        ? "Superadmin Dashboard"
+                        : isAdmin
+                        ? "Admin Dashboard"
+                        : "Citizen Dashboard"}
+                    </span>
+                  </button>
 
-                  {user.role === "citizen" && (
+                  {isCitizen && (
                     <>
-                      <p onClick={() => navigate("/documents")}>
-                        Request Document
-                      </p>
+                      <button
+                        type="button"
+                        className="dropdown-item"
+                        onClick={() => goTo("/documents")}
+                      >
+                        <span className="menu-icon">📄</span>
+                        <span className="menu-text">Request Document</span>
+                      </button>
 
-                      <p onClick={() => navigate("/calendar")}>
-                        Pickup Calendar
-                      </p>
+                      <button
+                        type="button"
+                        className="dropdown-item"
+                        onClick={() => goTo("/calendar")}
+                      >
+                        <span className="menu-icon">📅</span>
+                        <span className="menu-text">Pickup Calendar</span>
+                      </button>
                     </>
                   )}
 
-         {isAdminUser && (
-        <>
-          <p onClick={() => navigate("/admin")}>
-            Manage Requests
-          </p>
+                  {isAdminUser && (
+                    <>
+                      <button
+                        type="button"
+                        className="dropdown-item"
+                        onClick={() => goTo("/calendar")}
+                      >
+                        <span className="menu-icon">📅</span>
+                        <span className="menu-text">Calendar Schedule</span>
+                      </button>
 
-          <p onClick={() => navigate("/calendar")}>
-            Calendar Schedule
-          </p>
+                      <button
+                        type="button"
+                        className="dropdown-item"
+                        onClick={() => goTo("/reports")}
+                      >
+                        <span className="menu-icon">📈</span>
+                        <span className="menu-text">Reports</span>
+                      </button>
 
-          <p onClick={() => navigate("/reports")}>
-            Reports
-          </p>
-        </>
-      )}
-
-      <p onClick={() => navigate("/feedback")}>Feedback</p>
-
-                  <p onClick={() => navigate("/profile")}>My Profile</p>
+                      <button
+                        type="button"
+                        className="dropdown-item"
+                        onClick={() => goTo("/feedback")}
+                      >
+                        <span className="menu-icon">⭐</span>
+                        <span className="menu-text">Feedback</span>
+                      </button>
+                    </>
+                  )}
 
                   <hr />
 
-                  <p className="logout" onClick={handleLogout}>
-                    Logout
-                  </p>
+                  <button
+                    type="button"
+                    className="dropdown-item logout-item"
+                    onClick={handleLogout}
+                  >
+                    <span className="menu-icon">🚪</span>
+                    <span className="menu-text">Logout</span>
+                  </button>
                 </div>
               )}
             </div>

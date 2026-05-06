@@ -9,8 +9,10 @@ export default function Login() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false); // 👈 NEW
 
-  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const handleChange = (e) =>
+    setForm({ ...form, [e.target.name]: e.target.value });
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -33,13 +35,11 @@ export default function Login() {
       const data = await res.json();
 
       if (res.ok) {
-        // Store both user and JWT token
         localStorage.setItem("user", JSON.stringify(data.user));
         localStorage.setItem("token", data.token);
 
         setMessage("Login successful! Redirecting...");
 
-        // Redirect based on role
         setTimeout(() => {
           if (data.user.role === "admin") navigate("/admin");
           else navigate("/citizen");
@@ -64,7 +64,9 @@ export default function Login() {
           <span onClick={() => navigate("/signup")}>Register</span>
         </div>
 
-        {message && <p style={{ color: "red", fontSize: "15px" }}>{message}</p>}
+        {message && (
+          <p style={{ color: "red", fontSize: "15px" }}>{message}</p>
+        )}
 
         <form onSubmit={handleLogin}>
           <div className="form">
@@ -78,17 +80,65 @@ export default function Login() {
             />
 
             <label>Password</label>
-            <input
-              type="password"
+           <div className="password-wrapper">
+             <input
+              type={showPassword ? "text" : "password"}
               name="password"
               value={form.password}
               onChange={handleChange}
               placeholder="Your password"
             />
 
+            <button
+             type="button"
+             className="eye-btn"
+             onClick={() => setShowPassword(!showPassword)}>
+             {showPassword ? (
+        
+               // Eye OFF (hidden)
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path
+                 d="M3 3L21 21"
+                 stroke="currentColor"
+                 strokeWidth="2"
+                 strokeLinecap="round"/>
+                <path
+                 d="M10.58 10.58A2 2 0 0013.42 13.42"
+                 stroke="currentColor"
+                 strokeWidth="2"
+                 strokeLinecap="round"/>
+                <path
+                 d="M9.88 5.08A9.77 9.77 0 0112 5c5 0 9 7 9 7a16.18 16.18 0 01-2.2 2.94M6.53 6.53A16.48 16.48 0 003 12s4 7 9 7a9.77 9.77 0 003.47-.67"
+                 stroke="currentColor"
+                 strokeWidth="2"
+                 strokeLinecap="round"/>
+               </svg>
+           ) : (
+
+              // Eye ON (visible)
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+               <path
+                d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"
+                stroke="currentColor"
+                strokeWidth="2"/>
+               <circle
+                cx="12"
+                cy="12"
+                r="3"
+                stroke="currentColor"
+                strokeWidth="2"/>
+              </svg>
+            )}
+            </button>
+            </div>
+
             <div className="forgot">Forgot password?</div>
 
-            <button type="submit" className="signin-btn" disabled={loading}>
+            <button
+              type="submit"
+              className="signin-btn"
+              disabled={loading}
+            >
               {loading ? "Signing in..." : "Sign In"}
             </button>
 

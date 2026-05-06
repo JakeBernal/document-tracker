@@ -1,8 +1,10 @@
 import { Routes, Route, Navigate } from "react-router-dom";
+import { GoogleOAuthProvider } from "@react-oauth/google";
 
 import Home from "./pages/home";
 import Signin from "./pages/signin";
 import Signup from "./pages/signup";
+import ResetPassword from "./pages/ResetPassword";
 import Admin from "./pages/admin";
 import Citizen from "./pages/citizen";
 import RequestForm from "./pages/requestform";
@@ -18,12 +20,16 @@ import Profile from "./pages/profile";
 import AdminRoute from "./routes/AdminRoute";
 
 function App() {
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
   return (
-    <Routes>
+    <GoogleOAuthProvider clientId={googleClientId}>
+      <Routes>
       {/* Public routes */}
       <Route path="/" element={<Home />} />
       <Route path="/signin" element={<Signin />} />
       <Route path="/signup" element={<Signup />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
       {/* Citizen routes */}
       <Route path="/citizen" element={<Citizen />} />
@@ -68,6 +74,7 @@ function App() {
       {/* Fallback route */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </GoogleOAuthProvider>
   );
 }
 

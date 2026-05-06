@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { GoogleLogin } from "@react-oauth/google";
 import Navbar from "./navbar";
+import ForgotPasswordModal from "./ForgotPasswordModal";
 import "../css/login.css";
 
 export default function Login() {
@@ -17,6 +18,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
 
   const googleClientReady = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
 
@@ -145,8 +147,7 @@ export default function Login() {
   };
 
   const handleForgotPassword = () => {
-    setMessage("Forgot password module is not yet enabled.");
-    setMessageType("error");
+    setShowForgotPasswordModal(true);
   };
 
   return (
@@ -245,6 +246,11 @@ export default function Login() {
           </div>
         </form>
       </div>
+
+      <ForgotPasswordModal
+        isOpen={showForgotPasswordModal}
+        onClose={() => setShowForgotPasswordModal(false)}
+      />
     </div>
   );
 }

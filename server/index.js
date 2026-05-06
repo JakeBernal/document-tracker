@@ -7,6 +7,8 @@ const fs = require("fs");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
+const nodemailer = require("nodemailer");
+const crypto = require("crypto");
 
 const db = require("./config/db");
 const requestRoutes = require("./routes/requestRoutes");
@@ -21,6 +23,18 @@ const PORT = process.env.PORT || 5001;
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+// ================= EMAIL CONFIGURATION =================
+// Email functionality disabled for now - keeping UI only
+
+// Fallback nodemailer for other uses (if needed)
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASSWORD,
+  },
+});
 
 // ================= UPLOAD DIRECTORY =================
 const uploadsDir = path.join(__dirname, "uploads");
@@ -523,6 +537,183 @@ app.use("/api", receiptRoutes);
 app.use("/api", reportRoutes);
 app.use("/api", feedbackRoutes);
 app.use("/api", superadminRoutes);
+
+// ================= PASSWORD RESET ENDPOINTS =================
+app.post("/api/forgot-password", async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({
+      message: "Email is required.",
+    });
+  }
+
+  const cleanedEmail = cleanEmail(email);
+
+  try {
+    db.query(
+      "SELECT id FROM users WHERE email = ? LIMIT 1",
+      [cleanedEmail],
+      async (err, users) => {
+        if (err) {
+          console.error("FORGOT PASSWORD DB ERROR:", err);
+          return res.status(500).json({
+            message: "Database error.",
+            error: err.message,
+          });
+        }
+
+        if (users.length === 0) {
+          // Don't reveal if email exists or not (security best practice)
+          return res.status(200).json({
+            message: "If this email exists, a password reset link has been sent.",
+          });
+        }
+
+        // Generate reset token
+        const resetToken = crypto.randomBytes(32).toString("hex");
+        const resetTokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
+        const expiryTime = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
+
+        db.query(
+          "UPDATE users SET password_reset_token = ?, reset_token_expiry = ? WHERE id = ?",
+          [resetTokenHash, expiryTime, users[0].id],
+          async (updateErr) => {
+            if (updateErr) {
+              console.error("RESET TOKEN SAVE ERROR:", updateErr);
+              return res.status(500).json({
+                message: "Error generating reset token.",
+              });
+            }
+
+            // Send email using Gmail
+            const resetLink = `${process.env.RESET_PASSWORD_URL}?token=${resetToken}`;
+            
+            const mailOptions = {
+              from: process.env.EMAIL_USER,
+              to: cleanedEmail,
+              subject: "Password Reset Request - Document Tracker",
+              html: `
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+                  <h2 style="color: #333;">Password Reset Request</h2>
+                  <p>Hello,</p>
+                  <p>We received a request to reset your password. Click the button below to reset it:</p>
+                  <p style="margin: 30px 0;">
+                    <a href="${resetLink}" style="display: inline-block; background-color: #007bff; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                      Reset Password
+                    </a>
+                  </p>
+                  <p style="margin-top: 20px; color: #666;">Or copy and paste this link in your browser:</p>
+                  <p style="word-break: break-all; background-color: #f5f5f5; padding: 10px; border-radius: 3px;">
+                    ${resetLink}
+                  </p>
+                  <p style="margin-top: 20px; color: #666; font-size: 14px;">
+                    <strong>This link will expire in 30 minutes.</strong>
+                  </p>
+                  <p style="color: #666; font-size: 14px;">If you didn't request this, please ignore this email.</p>
+                  <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
+                  <p style="color: #999; font-size: 12px;">Best regards,<br>Document Tracker Team</p>
+                </div>
+              `,
+            };
+
+            try {
+              await transporter.sendMail(mailOptions);
+              console.log(`Password reset email sent to: ${cleanedEmail}`);
+              res.status(200).json({
+                message: "If this email exists, a password reset link has been sent.",
+              });
+            } catch (mailErr) {
+              console.error("EMAIL SEND ERROR:", mailErr);
+              // Still return success to not reveal if email exists
+              res.status(200).json({
+                message: "If this email exists, a password reset link has been sent.",
+              });
+            }
+          }
+        );
+      }
+    );
+  } catch (err) {
+    console.error("FORGOT PASSWORD ERROR:", err);
+    res.status(500).json({
+      message: "Server error.",
+      error: err.message,
+    });
+  }
+});
+
+app.post("/api/reset-password", async (req, res) => {
+  const { token, newPassword } = req.body;
+
+  if (!token || !newPassword) {
+    return res.status(400).json({
+      message: "Token and new password are required.",
+    });
+  }
+
+  if (newPassword.length < 8) {
+    return res.status(400).json({
+      message: "Password must be at least 8 characters.",
+    });
+  }
+
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+  try {
+    db.query(
+      "SELECT id FROM users WHERE password_reset_token = ? AND reset_token_expiry > NOW() LIMIT 1",
+      [tokenHash],
+      async (err, users) => {
+        if (err) {
+          console.error("RESET PASSWORD DB ERROR:", err);
+          return res.status(500).json({
+            message: "Database error.",
+            error: err.message,
+          });
+        }
+
+        if (users.length === 0) {
+          return res.status(400).json({
+            message: "Invalid or expired reset token.",
+          });
+        }
+
+        try {
+          const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+          db.query(
+            "UPDATE users SET password = ?, password_reset_token = NULL, reset_token_expiry = NULL WHERE id = ?",
+            [hashedPassword, users[0].id],
+            (updateErr) => {
+              if (updateErr) {
+                console.error("PASSWORD UPDATE ERROR:", updateErr);
+                return res.status(500).json({
+                  message: "Error updating password.",
+                });
+              }
+
+              res.status(200).json({
+                message: "Password reset successfully. You can now login.",
+              });
+            }
+          );
+        } catch (hashErr) {
+          console.error("PASSWORD HASH ERROR:", hashErr);
+          res.status(500).json({
+            message: "Error processing password.",
+          });
+        }
+      }
+    );
+  } catch (err) {
+    console.error("RESET PASSWORD ERROR:", err);
+    res.status(500).json({
+      message: "Server error.",
+      error: err.message,
+    });
+  }
+});
 
 // ================= 404 HANDLER =================
 app.use((req, res) => {

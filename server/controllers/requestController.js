@@ -39,6 +39,7 @@ const safeJsonParse = (value) => {
 
 const safeJsonStringify = (value) => {
   if (!value) return JSON.stringify({});
+
   if (typeof value === "string") {
     try {
       JSON.parse(value);
@@ -47,6 +48,7 @@ const safeJsonStringify = (value) => {
       return JSON.stringify({ raw: value });
     }
   }
+
   return JSON.stringify(value);
 };
 
@@ -84,8 +86,18 @@ const cleanPaymentMethod = (method) => {
 
 const toNumber = (value, fallback = 0) => {
   if (value === undefined || value === null || value === "") return fallback;
-  const numberValue = Number(value);
+
+  if (value === "Free") return 0;
+  if (value === "Varies") return fallback;
+
+  const cleanedValue = String(value).replace("₱", "").replace(",", "").trim();
+  const numberValue = Number(cleanedValue);
+
   return Number.isNaN(numberValue) ? fallback : numberValue;
+};
+
+const toMoney = (value) => {
+  return Number(toNumber(value)).toFixed(2);
 };
 
 const nullIfEmpty = (value) => {
@@ -93,8 +105,16 @@ const nullIfEmpty = (value) => {
   return value;
 };
 
+const generateTransactionNumber = () => {
+  return `TXN-${Date.now()}`;
+};
+
 const generateReceiptNumber = () => {
-  return `PT-${Date.now()}`;
+  return `OR-${Date.now()}`;
+};
+
+const isDigitalPaymentMethod = (paymentMethod) => {
+  return ["GCash", "PayMaya", "Bank Transfer"].includes(paymentMethod);
 };
 
 const createNotification = async (userId, requestId, title, message) => {
@@ -136,9 +156,128 @@ const getCitizenName = async (userId) => {
   }
 };
 
+const getCitizenProfile = async (userId) => {
+  const rows = await query(
+    `SELECT verification_status
+     FROM citizen_profiles
+     WHERE user_id = ?
+     LIMIT 1`,
+    [userId]
+  );
+
+  return rows[0] || null;
+};
+
+const getDocumentType = async (documentTypeId) => {
+  const rows = await query(
+    `SELECT id, name, fee
+     FROM document_types
+     WHERE id = ?
+     LIMIT 1`,
+    [documentTypeId]
+  );
+
+  return rows[0] || null;
+};
+
+const calculateFees = (documentType, fallbackValues = {}) => {
+  const fallbackDocumentFee = toNumber(
+    fallbackValues.document_fee || fallbackValues.amount_due || 0
+  );
+
+  const documentFee = toNumber(documentType?.fee, fallbackDocumentFee);
+  const systemFee = documentFee > 0 ? 10 : 0;
+  const discountAmount = 0;
+  const totalAmount = Math.max(documentFee + systemFee - discountAmount, 0);
+
+  return {
+    documentFee: toMoney(documentFee),
+    systemFee: toMoney(systemFee),
+    discountAmount: toMoney(discountAmount),
+    totalAmount: toMoney(totalAmount),
+    amountDue: toMoney(totalAmount),
+  };
+};
+
+const upsertReceipt = async ({
+  requestId,
+  receiptNumber,
+  documentFee,
+  systemFee,
+  discountAmount,
+  totalAmount,
+  paymentMethod,
+  paymentReference,
+}) => {
+  const existingReceipt = await query(
+    `SELECT id
+     FROM receipts
+     WHERE request_id = ?
+     LIMIT 1`,
+    [requestId]
+  );
+
+  if (existingReceipt.length > 0) {
+    await query(
+      `UPDATE receipts
+       SET receipt_number = ?,
+           document_fee = ?,
+           system_fee = ?,
+           discount_amount = ?,
+           total_amount = ?,
+           payment_method = ?,
+           payment_reference = ?
+       WHERE request_id = ?`,
+      [
+        receiptNumber,
+        documentFee,
+        systemFee,
+        discountAmount,
+        totalAmount,
+        paymentMethod,
+        nullIfEmpty(paymentReference),
+        requestId,
+      ]
+    );
+
+    return;
+  }
+
+  await query(
+    `INSERT INTO receipts
+     (
+       request_id,
+       receipt_number,
+       document_fee,
+       system_fee,
+       discount_amount,
+       total_amount,
+       payment_method,
+       payment_reference
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      requestId,
+      receiptNumber,
+      documentFee,
+      systemFee,
+      discountAmount,
+      totalAmount,
+      paymentMethod,
+      nullIfEmpty(paymentReference),
+    ]
+  );
+};
+
 exports.createRequest = async (req, res) => {
   try {
     const userId = req.user.id;
+
+    if (req.user.role !== "citizen") {
+      return res.status(403).json({
+        message: "Only citizen accounts can submit document requests.",
+      });
+    }
 
     const {
       document_type_id,
@@ -147,14 +286,37 @@ exports.createRequest = async (req, res) => {
       payment_reference,
       amount_due,
       document_fee,
-      system_fee,
-      discount_amount,
       total_amount,
-      receipt_number,
     } = req.body;
 
     if (!document_type_id) {
-      return res.status(400).json({ message: "Document type is required." });
+      return res.status(400).json({
+        message: "Document type is required.",
+      });
+    }
+
+    const citizenProfile = await getCitizenProfile(userId);
+
+    if (!citizenProfile) {
+      return res.status(403).json({
+        message:
+          "Please complete your citizen profile before requesting documents.",
+      });
+    }
+
+    if (citizenProfile.verification_status !== "Fully Verified") {
+      return res.status(403).json({
+        message:
+          "Your profile must be Fully Verified before requesting documents.",
+      });
+    }
+
+    const documentType = await getDocumentType(document_type_id);
+
+    if (!documentType) {
+      return res.status(404).json({
+        message: "Selected document type was not found.",
+      });
     }
 
     const parsedNotes = safeJsonParse(notes);
@@ -171,19 +333,41 @@ exports.createRequest = async (req, res) => {
         parsedNotes.payment_method
     );
 
-    const finalReceiptNumber =
-      receipt_number || parsedNotes.receipt_number || generateReceiptNumber();
+    if (isDigitalPaymentMethod(finalPaymentMethod) && !paymentProofPath) {
+      return res.status(400).json({
+        message: `Proof of payment is required for ${finalPaymentMethod}.`,
+      });
+    }
 
-    const finalDocumentFee = toNumber(document_fee || parsedNotes.document_fee);
-    const finalSystemFee = toNumber(system_fee || parsedNotes.system_fee);
-    const finalDiscountAmount = toNumber(
-      discount_amount || parsedNotes.discount_amount
-    );
-    const finalTotalAmount = toNumber(
-      total_amount || parsedNotes.total_amount || amount_due
-    );
+    const feeDetails = calculateFees(documentType, {
+      amount_due,
+      document_fee: document_fee || parsedNotes.document_fee,
+      total_amount: total_amount || parsedNotes.total_amount,
+    });
+
+    const transactionNumber =
+      parsedNotes.transaction_number ||
+      parsedNotes.receipt_number ||
+      generateTransactionNumber();
+
     const finalPaymentReference =
-      payment_reference || parsedNotes.payment_reference_number || null;
+      finalPaymentMethod === "Cash"
+        ? null
+        : payment_reference || parsedNotes.payment_reference_number || null;
+
+    const enrichedNotes = {
+      ...parsedNotes,
+      transaction_number: transactionNumber,
+      official_receipt_status: "Not yet generated",
+      payment_status_note:
+        "Payment is subject to admin or superadmin verification.",
+      backend_fee_source: "document_types",
+      document_fee: feeDetails.documentFee,
+      system_fee: feeDetails.systemFee,
+      discount_amount: feeDetails.discountAmount,
+      total_amount: feeDetails.totalAmount,
+      amount_due: feeDetails.amountDue,
+    };
 
     const insertRequestSql = `
       INSERT INTO requests
@@ -204,7 +388,7 @@ exports.createRequest = async (req, res) => {
         notes,
         form_data
       )
-      VALUES (?, ?, 'Pending', 'Unpaid', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, 'Pending', 'Unpaid', ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const requestResult = await query(insertRequestSql, [
@@ -212,15 +396,14 @@ exports.createRequest = async (req, res) => {
       document_type_id,
       finalPaymentMethod,
       finalPaymentReference,
-      finalReceiptNumber,
-      finalTotalAmount,
-      finalDocumentFee,
-      finalSystemFee,
-      finalDiscountAmount,
-      finalTotalAmount,
+      feeDetails.amountDue,
+      feeDetails.documentFee,
+      feeDetails.systemFee,
+      feeDetails.discountAmount,
+      feeDetails.totalAmount,
       paymentProofPath,
-      notes || null,
-      safeJsonStringify(parsedNotes),
+      safeJsonStringify(enrichedNotes),
+      safeJsonStringify(enrichedNotes),
     ]);
 
     const requestId = requestResult.insertId;
@@ -241,34 +424,12 @@ exports.createRequest = async (req, res) => {
       );
     }
 
-    await query(
-      `INSERT INTO receipts
-       (
-         request_id,
-         receipt_number,
-         document_fee,
-         system_fee,
-         discount_amount,
-         total_amount,
-         payment_method,
-         payment_reference
-       )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        requestId,
-        finalReceiptNumber,
-        finalDocumentFee,
-        finalSystemFee,
-        finalDiscountAmount,
-        finalTotalAmount,
-        finalPaymentMethod,
-        finalPaymentReference,
-      ]
-    );
-
     const citizenName = await getCitizenName(userId);
     const documentName =
-      parsedNotes.document_name || parsedNotes.parent_document || "a document request";
+      documentType.name ||
+      parsedNotes.document_name ||
+      parsedNotes.parent_document ||
+      "a document request";
 
     await createNotification(
       userId,
@@ -284,12 +445,20 @@ exports.createRequest = async (req, res) => {
     );
 
     return res.status(201).json({
-      message: "Request submitted successfully!",
+      message:
+        "Request submitted successfully. Payment is pending admin verification.",
       requestId,
-      receipt_number: finalReceiptNumber,
+      transaction_number: transactionNumber,
+      payment_status: "Unpaid",
+      amount_due: feeDetails.amountDue,
+      document_fee: feeDetails.documentFee,
+      system_fee: feeDetails.systemFee,
+      discount_amount: feeDetails.discountAmount,
+      total_amount: feeDetails.totalAmount,
     });
   } catch (err) {
     console.error("CREATE REQUEST ERROR:", err);
+
     return res.status(500).json({
       message: "Database error",
       error: err.message,
@@ -346,10 +515,16 @@ exports.getMyRequests = async (req, res) => {
       };
     });
 
-    return res.status(200).json({ requests: formatted });
+    return res.status(200).json({
+      requests: formatted,
+    });
   } catch (err) {
     console.error("GET MY REQUESTS ERROR:", err);
-    return res.status(500).json({ message: "Database error", error: err.message });
+
+    return res.status(500).json({
+      message: "Database error",
+      error: err.message,
+    });
   }
 };
 
@@ -390,7 +565,9 @@ exports.getRequestById = async (req, res) => {
     );
 
     if (results.length === 0) {
-      return res.status(404).json({ message: "Request not found" });
+      return res.status(404).json({
+        message: "Request not found",
+      });
     }
 
     const request = results[0];
@@ -400,7 +577,9 @@ exports.getRequestById = async (req, res) => {
       req.user.role !== "admin" &&
       req.user.role !== "superadmin"
     ) {
-      return res.status(403).json({ message: "Unauthorized access" });
+      return res.status(403).json({
+        message: "Unauthorized access",
+      });
     }
 
     request.form_data = safeJsonParse(request.form_data);
@@ -412,10 +591,16 @@ exports.getRequestById = async (req, res) => {
         "Document Request";
     }
 
-    return res.status(200).json({ request });
+    return res.status(200).json({
+      request,
+    });
   } catch (err) {
     console.error("GET REQUEST ERROR:", err);
-    return res.status(500).json({ message: "Database error", error: err.message });
+
+    return res.status(500).json({
+      message: "Database error",
+      error: err.message,
+    });
   }
 };
 
@@ -454,6 +639,7 @@ exports.getAllRequests = async (req, res) => {
 
     const formatted = results.map((request) => {
       const formData = safeJsonParse(request.form_data);
+
       return {
         ...request,
         form_data: formData,
@@ -465,10 +651,16 @@ exports.getAllRequests = async (req, res) => {
       };
     });
 
-    return res.status(200).json({ requests: formatted });
+    return res.status(200).json({
+      requests: formatted,
+    });
   } catch (err) {
     console.error("GET ALL REQUESTS ERROR:", err);
-    return res.status(500).json({ message: "Database error", error: err.message });
+
+    return res.status(500).json({
+      message: "Database error",
+      error: err.message,
+    });
   }
 };
 
@@ -478,7 +670,10 @@ exports.updateRequest = async (req, res) => {
     const userId = req.user.id;
 
     const requestRows = await query(
-      `SELECT * FROM requests WHERE id = ? AND user_id = ? LIMIT 1`,
+      `SELECT *
+       FROM requests
+       WHERE id = ? AND user_id = ?
+       LIMIT 1`,
       [id, userId]
     );
 
@@ -524,26 +719,34 @@ exports.updateRequest = async (req, res) => {
       mergedFormData.document_name = req.body.document_name;
     }
 
-    const finalPaymentMethod = cleanPaymentMethod(
-      req.body.payment_method_for_database ||
-        incomingFormData.payment_method_for_database ||
-        req.body.payment_method ||
-        incomingFormData.payment_method ||
-        existing.payment_method
-    );
+    const canUpdatePaymentMethod = existing.payment_status === "Unpaid";
+
+    const finalPaymentMethod = canUpdatePaymentMethod
+      ? cleanPaymentMethod(
+          req.body.payment_method_for_database ||
+            incomingFormData.payment_method_for_database ||
+            req.body.payment_method ||
+            incomingFormData.payment_method ||
+            existing.payment_method
+        )
+      : existing.payment_method;
 
     mergedFormData.payment_method_for_database = finalPaymentMethod;
     mergedFormData.payment_method =
-      req.body.payment_method || incomingFormData.payment_method || finalPaymentMethod;
+      req.body.payment_method ||
+      incomingFormData.payment_method ||
+      finalPaymentMethod;
 
     const newFile =
-      getFirstUploadedFile(req, "uploaded_file") || getFirstUploadedFile(req, "file");
+      getFirstUploadedFile(req, "uploaded_file") ||
+      getFirstUploadedFile(req, "file");
 
     let newFilePath = null;
 
     if (newFile) {
       newFilePath = normalizePath(newFile);
-      mergedFormData.uploaded_requirement_file = newFile.originalname || newFile.filename;
+      mergedFormData.uploaded_requirement_file =
+        newFile.originalname || newFile.filename;
       mergedFormData.requirement_reuploaded_at = new Date().toISOString();
     }
 
@@ -555,7 +758,10 @@ exports.updateRequest = async (req, res) => {
       mergedFormData.resubmitted_from_status = "Needs More Info";
     }
 
-    const finalNotes = req.body.notes || existing.notes || safeJsonStringify(mergedFormData);
+    const finalNotes = safeJsonStringify({
+      ...safeJsonParse(existing.notes),
+      ...mergedFormData,
+    });
 
     const result = await query(
       `UPDATE requests
@@ -575,7 +781,9 @@ exports.updateRequest = async (req, res) => {
     );
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({ message: "Request not found." });
+      return res.status(404).json({
+        message: "Request not found.",
+      });
     }
 
     if (newFilePath) {
@@ -585,13 +793,6 @@ exports.updateRequest = async (req, res) => {
         [id, newFilePath]
       );
     }
-
-    await query(
-      `UPDATE receipts
-       SET payment_method = ?
-       WHERE request_id = ?`,
-      [finalPaymentMethod, id]
-    );
 
     await createNotification(
       userId,
@@ -604,11 +805,15 @@ exports.updateRequest = async (req, res) => {
 
     const citizenName = await getCitizenName(userId);
     const documentName =
-      mergedFormData.document_name || mergedFormData.parent_document || "a document request";
+      mergedFormData.document_name ||
+      mergedFormData.parent_document ||
+      "a document request";
 
     await notifyAdmins(
       id,
-      wasNeedsMoreInfo ? "Request Resubmitted by Citizen" : "Request Edited by Citizen",
+      wasNeedsMoreInfo
+        ? "Request Resubmitted by Citizen"
+        : "Request Edited by Citizen",
       wasNeedsMoreInfo
         ? `${citizenName} resubmitted ${documentName} request #${id}. Status is now Pending.`
         : `${citizenName} updated ${documentName} request #${id}.`
@@ -629,6 +834,7 @@ exports.updateRequest = async (req, res) => {
     });
   } catch (err) {
     console.error("UPDATE REQUEST ERROR:", err);
+
     return res.status(500).json({
       message: "Database error",
       error: err.message,
@@ -652,81 +858,163 @@ exports.updateStatus = async (req, res) => {
     ];
 
     if (!validStatuses.includes(status)) {
-      return res.status(400).json({ message: "Invalid status value" });
-    }
-
-    const result = await query("UPDATE requests SET status = ? WHERE id = ?", [
-      status,
-      id,
-    ]);
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: "Request not found" });
+      return res.status(400).json({
+        message: "Invalid status value",
+      });
     }
 
     const requestRows = await query(
-      `SELECT r.user_id, u.full_name AS citizen_name, dt.name AS document_name, r.form_data
+      `SELECT r.user_id,
+              r.payment_status,
+              u.full_name AS citizen_name,
+              dt.name AS document_name,
+              r.form_data
        FROM requests r
        LEFT JOIN users u ON r.user_id = u.id
        LEFT JOIN document_types dt ON r.document_type_id = dt.id
-       WHERE r.id = ?`,
+       WHERE r.id = ?
+       LIMIT 1`,
       [id]
     );
 
-    if (requestRows.length > 0) {
-      const request = requestRows[0];
-      const formData = safeJsonParse(request.form_data);
-      const citizenName = request.citizen_name || "A citizen";
-      const documentName =
-        request.document_name || formData.document_name || formData.parent_document || "a document request";
-
-      await createNotification(
-        request.user_id,
-        id,
-        "Request Status Updated",
-        `Your request status is now ${status}.`
-      );
-
-      await notifyAdmins(
-        id,
-        "Request Status Updated",
-        `${citizenName}'s ${documentName} status was updated to ${status}.`
-      );
+    if (requestRows.length === 0) {
+      return res.status(404).json({
+        message: "Request not found",
+      });
     }
 
-    return res.json({ message: "Status updated!" });
+    const request = requestRows[0];
+
+    if (
+      status === "Completed" &&
+      !["Paid", "Waived"].includes(request.payment_status)
+    ) {
+      return res.status(400).json({
+        message:
+          "Request cannot be marked as Completed while payment is still Unpaid.",
+      });
+    }
+
+    const result = await query(
+      `UPDATE requests
+       SET status = ?
+       WHERE id = ?`,
+      [status, id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        message: "Request not found",
+      });
+    }
+
+    const formData = safeJsonParse(request.form_data);
+    const citizenName = request.citizen_name || "A citizen";
+    const documentName =
+      request.document_name ||
+      formData.document_name ||
+      formData.parent_document ||
+      "a document request";
+
+    await createNotification(
+      request.user_id,
+      id,
+      "Request Status Updated",
+      `Your request status is now ${status}.`
+    );
+
+    await notifyAdmins(
+      id,
+      "Request Status Updated",
+      `${citizenName}'s ${documentName} status was updated to ${status}.`
+    );
+
+    return res.json({
+      message: "Status updated!",
+    });
   } catch (err) {
     console.error("UPDATE STATUS ERROR:", err);
-    return res.status(500).json({ message: "Database error", error: err.message });
+
+    return res.status(500).json({
+      message: "Database error",
+      error: err.message,
+    });
   }
 };
 
 exports.updatePayment = async (req, res) => {
   try {
     const { id } = req.params;
+
     const {
       payment_status,
       payment_method,
       payment_reference,
-      amount_due,
       document_fee,
-      system_fee,
-      discount_amount,
+      amount_due,
       total_amount,
     } = req.body;
 
     const validPaymentStatuses = ["Unpaid", "Paid", "Waived"];
 
     if (!validPaymentStatuses.includes(payment_status)) {
-      return res.status(400).json({ message: "Invalid payment status" });
+      return res.status(400).json({
+        message: "Invalid payment status",
+      });
     }
 
-    const finalPaymentMethod = cleanPaymentMethod(payment_method);
-    const finalAmountDue = toNumber(amount_due);
-    const finalDocumentFee = toNumber(document_fee);
-    const finalSystemFee = toNumber(system_fee);
-    const finalDiscountAmount = toNumber(discount_amount);
-    const finalTotalAmount = toNumber(total_amount, finalAmountDue);
+    const requestRows = await query(
+      `SELECT r.*,
+              u.full_name AS citizen_name,
+              dt.name AS document_name,
+              dt.fee AS document_type_fee
+       FROM requests r
+       LEFT JOIN users u ON r.user_id = u.id
+       LEFT JOIN document_types dt ON r.document_type_id = dt.id
+       WHERE r.id = ?
+       LIMIT 1`,
+      [id]
+    );
+
+    if (requestRows.length === 0) {
+      return res.status(404).json({
+        message: "Request not found",
+      });
+    }
+
+    const request = requestRows[0];
+
+    const finalPaymentMethod = cleanPaymentMethod(
+      payment_method || request.payment_method
+    );
+
+    const feeDetails = calculateFees(
+      {
+        fee: request.document_type_fee,
+      },
+      {
+        document_fee: document_fee || request.document_fee,
+        amount_due: amount_due || request.amount_due,
+        total_amount: total_amount || request.total_amount,
+      }
+    );
+
+    let officialReceiptNumber = null;
+
+    if (payment_status === "Paid" || payment_status === "Waived") {
+      const receiptRows = await query(
+        `SELECT receipt_number
+         FROM receipts
+         WHERE request_id = ?
+         LIMIT 1`,
+        [id]
+      );
+
+      officialReceiptNumber =
+        request.receipt_number ||
+        receiptRows[0]?.receipt_number ||
+        generateReceiptNumber();
+    }
 
     const result = await query(
       `UPDATE requests
@@ -738,80 +1026,92 @@ exports.updatePayment = async (req, res) => {
            system_fee = ?,
            discount_amount = ?,
            total_amount = ?,
-           paid_at = ?
+           paid_at = ?,
+           receipt_number = ?
        WHERE id = ?`,
       [
         payment_status,
         finalPaymentMethod,
         nullIfEmpty(payment_reference),
-        finalAmountDue,
-        finalDocumentFee,
-        finalSystemFee,
-        finalDiscountAmount,
-        finalTotalAmount,
+        feeDetails.amountDue,
+        feeDetails.documentFee,
+        feeDetails.systemFee,
+        feeDetails.discountAmount,
+        feeDetails.totalAmount,
         payment_status === "Paid" ? new Date() : null,
+        officialReceiptNumber,
         id,
       ]
     );
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({ message: "Request not found" });
+      return res.status(404).json({
+        message: "Request not found",
+      });
     }
 
-    await query(
-      `UPDATE receipts
-       SET document_fee = ?,
-           system_fee = ?,
-           discount_amount = ?,
-           total_amount = ?,
-           payment_method = ?,
-           payment_reference = ?
-       WHERE request_id = ?`,
-      [
-        finalDocumentFee,
-        finalSystemFee,
-        finalDiscountAmount,
-        finalTotalAmount,
-        finalPaymentMethod,
-        nullIfEmpty(payment_reference),
-        id,
-      ]
-    );
-
-    const requestRows = await query(
-      `SELECT r.user_id, u.full_name AS citizen_name, dt.name AS document_name, r.form_data
-       FROM requests r
-       LEFT JOIN users u ON r.user_id = u.id
-       LEFT JOIN document_types dt ON r.document_type_id = dt.id
-       WHERE r.id = ?`,
-      [id]
-    );
-
-    if (requestRows.length > 0) {
-      const request = requestRows[0];
-      const formData = safeJsonParse(request.form_data);
-      const citizenName = request.citizen_name || "A citizen";
-      const documentName =
-        request.document_name || formData.document_name || formData.parent_document || "a document request";
-
-      await createNotification(
-        request.user_id,
-        id,
-        payment_status === "Paid" ? "Payment Verified" : "Payment Status Updated",
-        `Your payment status is now ${payment_status}.`
-      );
-
-      await notifyAdmins(
-        id,
-        "Payment Status Updated",
-        `${citizenName}'s payment for ${documentName} is now ${payment_status}.`
-      );
+    if (payment_status === "Paid" || payment_status === "Waived") {
+      await upsertReceipt({
+        requestId: id,
+        receiptNumber: officialReceiptNumber,
+        documentFee: feeDetails.documentFee,
+        systemFee: feeDetails.systemFee,
+        discountAmount: feeDetails.discountAmount,
+        totalAmount: feeDetails.totalAmount,
+        paymentMethod: finalPaymentMethod,
+        paymentReference: payment_reference,
+      });
     }
 
-    return res.json({ message: "Payment updated!" });
+    if (payment_status === "Unpaid") {
+      await query(`DELETE FROM receipts WHERE request_id = ?`, [id]);
+    }
+
+    const formData = safeJsonParse(request.form_data);
+    const citizenName = request.citizen_name || "A citizen";
+    const documentName =
+      request.document_name ||
+      formData.document_name ||
+      formData.parent_document ||
+      "a document request";
+
+    await createNotification(
+      request.user_id,
+      id,
+      payment_status === "Paid"
+        ? "Payment Verified"
+        : payment_status === "Waived"
+        ? "Payment Waived"
+        : "Payment Status Updated",
+      `Your payment status is now ${payment_status}.`
+    );
+
+    await notifyAdmins(
+      id,
+      "Payment Status Updated",
+      `${citizenName}'s payment for ${documentName} is now ${payment_status}.`
+    );
+
+    return res.json({
+      message:
+        payment_status === "Paid" || payment_status === "Waived"
+          ? "Payment updated and official receipt record saved."
+          : "Payment updated.",
+      payment_status,
+      receipt_number: officialReceiptNumber,
+      amount_due: feeDetails.amountDue,
+      document_fee: feeDetails.documentFee,
+      system_fee: feeDetails.systemFee,
+      discount_amount: feeDetails.discountAmount,
+      total_amount: feeDetails.totalAmount,
+    });
   } catch (err) {
     console.error("UPDATE PAYMENT ERROR:", err);
-    return res.status(500).json({ message: "Database error", error: err.message });
+
+    return res.status(500).json({
+      message: "Database error",
+      error: err.message,
+    });
   }
 };
 
@@ -827,16 +1127,22 @@ exports.setPickupAppointment = async (req, res) => {
     }
 
     const requestRows = await query(
-      `SELECT r.user_id, u.full_name AS citizen_name, dt.name AS document_name, r.form_data
+      `SELECT r.user_id,
+              u.full_name AS citizen_name,
+              dt.name AS document_name,
+              r.form_data
        FROM requests r
        LEFT JOIN users u ON r.user_id = u.id
        LEFT JOIN document_types dt ON r.document_type_id = dt.id
-       WHERE r.id = ?`,
+       WHERE r.id = ?
+       LIMIT 1`,
       [id]
     );
 
     if (requestRows.length === 0) {
-      return res.status(404).json({ message: "Request not found" });
+      return res.status(404).json({
+        message: "Request not found",
+      });
     }
 
     const request = requestRows[0];
@@ -844,7 +1150,10 @@ exports.setPickupAppointment = async (req, res) => {
     const userId = request.user_id;
     const citizenName = request.citizen_name || "A citizen";
     const documentName =
-      request.document_name || formData.document_name || formData.parent_document || "a document request";
+      request.document_name ||
+      formData.document_name ||
+      formData.parent_document ||
+      "a document request";
 
     await query(
       `UPDATE requests
@@ -854,7 +1163,10 @@ exports.setPickupAppointment = async (req, res) => {
     );
 
     const appointmentRows = await query(
-      "SELECT id FROM appointments WHERE request_id = ? LIMIT 1",
+      `SELECT id
+       FROM appointments
+       WHERE request_id = ?
+       LIMIT 1`,
       [id]
     );
 
@@ -887,10 +1199,16 @@ exports.setPickupAppointment = async (req, res) => {
       `${citizenName}'s ${documentName} pickup was scheduled on ${pickup_date} at ${pickup_time}.`
     );
 
-    return res.json({ message: "Pickup appointment scheduled successfully!" });
+    return res.json({
+      message: "Pickup appointment scheduled successfully!",
+    });
   } catch (err) {
     console.error("SET PICKUP APPOINTMENT ERROR:", err);
-    return res.status(500).json({ message: "Database error", error: err.message });
+
+    return res.status(500).json({
+      message: "Database error",
+      error: err.message,
+    });
   }
 };
 
@@ -899,7 +1217,10 @@ exports.getMyAppointments = async (req, res) => {
     const userId = req.user.id;
 
     const results = await query(
-      `SELECT a.*, r.status AS request_status, dt.name AS document_name, r.form_data
+      `SELECT a.*,
+              r.status AS request_status,
+              dt.name AS document_name,
+              r.form_data
        FROM appointments a
        LEFT JOIN requests r ON a.request_id = r.id
        LEFT JOIN document_types dt ON r.document_type_id = dt.id
@@ -910,6 +1231,7 @@ exports.getMyAppointments = async (req, res) => {
 
     const appointments = results.map((appointment) => {
       const formData = safeJsonParse(appointment.form_data);
+
       return {
         ...appointment,
         document_name:
@@ -920,17 +1242,28 @@ exports.getMyAppointments = async (req, res) => {
       };
     });
 
-    return res.json({ appointments });
+    return res.json({
+      appointments,
+    });
   } catch (err) {
     console.error("GET MY APPOINTMENTS ERROR:", err);
-    return res.status(500).json({ message: "Database error", error: err.message });
+
+    return res.status(500).json({
+      message: "Database error",
+      error: err.message,
+    });
   }
 };
 
 exports.getAllAppointments = async (req, res) => {
   try {
     const results = await query(
-      `SELECT a.*, u.full_name AS citizen_name, u.email, r.status AS request_status, dt.name AS document_name, r.form_data
+      `SELECT a.*,
+              u.full_name AS citizen_name,
+              u.email,
+              r.status AS request_status,
+              dt.name AS document_name,
+              r.form_data
        FROM appointments a
        LEFT JOIN users u ON a.user_id = u.id
        LEFT JOIN requests r ON a.request_id = r.id
@@ -940,6 +1273,7 @@ exports.getAllAppointments = async (req, res) => {
 
     const appointments = results.map((appointment) => {
       const formData = safeJsonParse(appointment.form_data);
+
       return {
         ...appointment,
         document_name:
@@ -950,10 +1284,16 @@ exports.getAllAppointments = async (req, res) => {
       };
     });
 
-    return res.json({ appointments });
+    return res.json({
+      appointments,
+    });
   } catch (err) {
     console.error("GET ALL APPOINTMENTS ERROR:", err);
-    return res.status(500).json({ message: "Database error", error: err.message });
+
+    return res.status(500).json({
+      message: "Database error",
+      error: err.message,
+    });
   }
 };
 
@@ -962,7 +1302,28 @@ exports.uploadFile = async (req, res) => {
     const { id } = req.params;
 
     if (!req.file) {
-      return res.status(400).json({ message: "No file uploaded" });
+      return res.status(400).json({
+        message: "No file uploaded",
+      });
+    }
+
+    const requestRows = await query(
+      `SELECT r.user_id,
+              u.full_name AS citizen_name,
+              dt.name AS document_name,
+              r.form_data
+       FROM requests r
+       LEFT JOIN users u ON r.user_id = u.id
+       LEFT JOIN document_types dt ON r.document_type_id = dt.id
+       WHERE r.id = ?
+       LIMIT 1`,
+      [id]
+    );
+
+    if (requestRows.length === 0) {
+      return res.status(404).json({
+        message: "Request not found",
+      });
     }
 
     const filePath = normalizePath(req.file);
@@ -973,39 +1334,38 @@ exports.uploadFile = async (req, res) => {
       [id, filePath]
     );
 
-    const requestRows = await query(
-      `SELECT r.user_id, u.full_name AS citizen_name, dt.name AS document_name, r.form_data
-       FROM requests r
-       LEFT JOIN users u ON r.user_id = u.id
-       LEFT JOIN document_types dt ON r.document_type_id = dt.id
-       WHERE r.id = ?`,
-      [id]
+    const request = requestRows[0];
+    const formData = safeJsonParse(request.form_data);
+    const citizenName = request.citizen_name || "A citizen";
+    const documentName =
+      request.document_name ||
+      formData.document_name ||
+      formData.parent_document ||
+      "a document request";
+
+    await createNotification(
+      request.user_id,
+      id,
+      "Document File Uploaded",
+      "A document file has been uploaded to your request."
     );
 
-    if (requestRows.length > 0) {
-      const request = requestRows[0];
-      const formData = safeJsonParse(request.form_data);
-      const citizenName = request.citizen_name || "A citizen";
-      const documentName =
-        request.document_name || formData.document_name || formData.parent_document || "a document request";
+    await notifyAdmins(
+      id,
+      "Document File Uploaded",
+      `A file was uploaded for ${citizenName}'s ${documentName}.`
+    );
 
-      await createNotification(
-        request.user_id,
-        id,
-        "Document File Uploaded",
-        "A document file has been uploaded to your request."
-      );
-
-      await notifyAdmins(
-        id,
-        "Document File Uploaded",
-        `A file was uploaded for ${citizenName}'s ${documentName}.`
-      );
-    }
-
-    return res.json({ message: "File uploaded successfully!", filePath });
+    return res.json({
+      message: "File uploaded successfully!",
+      filePath,
+    });
   } catch (err) {
     console.error("FILE UPLOAD ERROR:", err);
-    return res.status(500).json({ message: "Database error", error: err.message });
+
+    return res.status(500).json({
+      message: "Database error",
+      error: err.message,
+    });
   }
 };

@@ -6,6 +6,7 @@ const path = require("path");
 const fs = require("fs");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const { OAuth2Client } = require("google-auth-library");
 
 const db = require("./config/db");
 const requestRoutes = require("./routes/requestRoutes");
@@ -17,6 +18,9 @@ const superadminRoutes = require("./routes/superadminRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
+const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // ================= UPLOAD DIRECTORY =================
 const uploadsDir = path.join(__dirname, "uploads");
@@ -43,33 +47,11 @@ const cleanEmail = (value) => {
 };
 
 const isValidEmail = (email) => {
-  /*
-    Required email format:
-    - Has text before @
-    - Has @ symbol
-    - Has domain name
-    - Has domain extension
-
-    Valid examples:
-    jesse@gmail.com
-    admin@outlook.com
-    superadmin@papertrail.com
-  */
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
   return emailRegex.test(cleanEmail(email));
 };
 
 const isStrongPassword = (password) => {
-  /*
-    Required password format:
-    - At least 8 characters
-    - At least 1 uppercase letter
-    - At least 1 lowercase letter
-    - At least 1 number
-    - At least 1 special character
-
-    Example: Jessezero2.
-  */
   const passwordRegex =
     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$/;
 
@@ -86,17 +68,33 @@ const buildSafeUser = (user) => {
     full_name: user.full_name,
     email: user.email,
     role: user.role,
+    auth_provider: user.auth_provider || "local",
   };
+};
+
+const createSystemToken = (user) => {
+  return jwt.sign(
+    {
+      id: user.id,
+      full_name: user.full_name,
+      email: user.email,
+      role: user.role,
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: "2h" }
+  );
 };
 
 // ================= SIMPLE LOGIN ATTEMPT LIMITER =================
 const loginAttempts = new Map();
 
 const getLoginAttempt = (email) => {
-  return loginAttempts.get(email) || {
-    count: 0,
-    lockedUntil: 0,
-  };
+  return (
+    loginAttempts.get(email) || {
+      count: 0,
+      lockedUntil: 0,
+    }
+  );
 };
 
 const recordFailedLogin = (email) => {
@@ -133,7 +131,7 @@ const isLoginLocked = (email) => {
 
 // ================= CORS =================
 const corsOptions = {
-  origin: "http://localhost:5173",
+  origin: CLIENT_URL,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
@@ -146,6 +144,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // ================= SERVE UPLOADED FILES =================
+// NOTE: For MVP, this works. Later, protect sensitive upload files through a secured route.
 app.use("/uploads", express.static(uploadsDir));
 app.use("/server/uploads", express.static(uploadsDir));
 
@@ -226,8 +225,7 @@ app.post("/api/register", async (req, res) => {
 
   if (!isValidEmail(email)) {
     return res.status(400).json({
-      message:
-        "Please enter a valid email address. Example: jesse@gmail.com",
+      message: "Please enter a valid email address. Example: jesse@gmail.com",
     });
   }
 
@@ -242,7 +240,9 @@ app.post("/api/register", async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     db.query(
-      "INSERT INTO users (full_name, email, password, role) VALUES (?, ?, ?, ?)",
+      `INSERT INTO users
+       (full_name, email, password, role, auth_provider)
+       VALUES (?, ?, ?, ?, 'local')`,
       [fullName, email, hashedPassword, "citizen"],
       (err, result) => {
         if (err) {
@@ -289,8 +289,7 @@ app.post("/api/login", (req, res) => {
 
   if (!isValidEmail(email)) {
     return res.status(400).json({
-      message:
-        "Please enter a valid email address. Example: jesse@gmail.com",
+      message: "Please enter a valid email address. Example: jesse@gmail.com",
     });
   }
 
@@ -330,6 +329,16 @@ app.post("/api/login", (req, res) => {
 
       try {
         const user = results[0];
+
+        if (!user.password) {
+          recordFailedLogin(email);
+
+          return res.status(400).json({
+            message:
+              "This account uses Google Sign-In. Please continue with Google.",
+          });
+        }
+
         const passwordMatched = await bcrypt.compare(password, user.password);
 
         if (!passwordMatched) {
@@ -342,16 +351,7 @@ app.post("/api/login", (req, res) => {
 
         resetLoginAttempt(email);
 
-        const token = jwt.sign(
-          {
-            id: user.id,
-            full_name: user.full_name,
-            email: user.email,
-            role: user.role,
-          },
-          process.env.JWT_SECRET,
-          { expiresIn: "2h" }
-        );
+        const token = createSystemToken(user);
 
         return res.status(200).json({
           message: "Login success.",
@@ -368,6 +368,152 @@ app.post("/api/login", (req, res) => {
       }
     }
   );
+});
+
+// GOOGLE LOGIN
+app.post("/api/google-login", async (req, res) => {
+  const { credential } = req.body;
+
+  if (!credential) {
+    return res.status(400).json({
+      message: "Google credential is required.",
+    });
+  }
+
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    return res.status(500).json({
+      message: "Google Client ID is not configured.",
+    });
+  }
+
+  if (!process.env.JWT_SECRET) {
+    return res.status(500).json({
+      message: "JWT secret is not configured.",
+    });
+  }
+
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+
+    if (!payload || !payload.email || !payload.sub) {
+      return res.status(401).json({
+        message: "Invalid Google account.",
+      });
+    }
+
+    if (!payload.email_verified) {
+      return res.status(401).json({
+        message: "Google email is not verified.",
+      });
+    }
+
+    const googleId = payload.sub;
+    const email = cleanEmail(payload.email);
+    const fullName = cleanText(payload.name) || email.split("@")[0];
+
+    db.query(
+      "SELECT * FROM users WHERE email = ? OR google_id = ? LIMIT 1",
+      [email, googleId],
+      (findErr, users) => {
+        if (findErr) {
+          console.error("GOOGLE FIND USER ERROR:", findErr);
+
+          return res.status(500).json({
+            message: "Database error while checking Google account.",
+            error: findErr.message,
+          });
+        }
+
+        if (users.length > 0) {
+          const user = users[0];
+
+          const finishLogin = (updatedUser) => {
+            const token = createSystemToken(updatedUser);
+
+            return res.status(200).json({
+              message: "Google login success.",
+              user: buildSafeUser(updatedUser),
+              token,
+            });
+          };
+
+          if (!user.google_id) {
+            db.query(
+              `UPDATE users
+               SET google_id = ?
+               WHERE id = ?`,
+              [googleId, user.id],
+              (updateErr) => {
+                if (updateErr) {
+                  console.error("GOOGLE LINK ACCOUNT ERROR:", updateErr);
+
+                  return res.status(500).json({
+                    message: "Database error while linking Google account.",
+                    error: updateErr.message,
+                  });
+                }
+
+                return finishLogin({
+                  ...user,
+                  google_id: googleId,
+                });
+              }
+            );
+
+            return;
+          }
+
+          return finishLogin(user);
+        }
+
+        db.query(
+          `INSERT INTO users
+           (full_name, email, password, role, google_id, auth_provider)
+           VALUES (?, ?, NULL, 'citizen', ?, 'google')`,
+          [fullName, email, googleId],
+          (insertErr, result) => {
+            if (insertErr) {
+              console.error("GOOGLE CREATE USER ERROR:", insertErr);
+
+              return res.status(500).json({
+                message: "Database error while creating Google account.",
+                error: insertErr.message,
+              });
+            }
+
+            const newUser = {
+              id: result.insertId,
+              full_name: fullName,
+              email,
+              role: "citizen",
+              google_id: googleId,
+              auth_provider: "google",
+            };
+
+            const token = createSystemToken(newUser);
+
+            return res.status(201).json({
+              message: "Google account created and logged in.",
+              user: buildSafeUser(newUser),
+              token,
+            });
+          }
+        );
+      }
+    );
+  } catch (err) {
+    console.error("GOOGLE LOGIN ERROR:", err);
+
+    return res.status(401).json({
+      message: "Google sign-in verification failed.",
+      error: err.message,
+    });
+  }
 });
 
 // ================= API ROUTES =================

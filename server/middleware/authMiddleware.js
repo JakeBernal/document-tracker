@@ -6,7 +6,7 @@ const verifyToken = (req, res, next) => {
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({
-        message: "No token provided.",
+        message: "Access denied. No token provided.",
       });
     }
 
@@ -14,13 +14,24 @@ const verifyToken = (req, res, next) => {
 
     if (!process.env.JWT_SECRET) {
       return res.status(500).json({
-        message: "JWT secret is not configured.",
+        message: "Server authentication configuration is missing.",
       });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    req.user = decoded;
+    req.user = {
+      id: decoded.id || decoded.user_id,
+      role: decoded.role,
+      email: decoded.email || null,
+    };
+
+    if (!req.user.id || !req.user.role) {
+      return res.status(401).json({
+        message: "Invalid token payload.",
+      });
+    }
+
     next();
   } catch (error) {
     console.error("VERIFY TOKEN ERROR:", error.message);
@@ -31,40 +42,40 @@ const verifyToken = (req, res, next) => {
   }
 };
 
+const allowRoles = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        message: "Unauthorized. Please log in first.",
+      });
+    }
+
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({
+        message: "Access denied. You are not allowed to perform this action.",
+      });
+    }
+
+    next();
+  };
+};
+
+const verifyCitizen = (req, res, next) => {
+  return allowRoles("citizen")(req, res, next);
+};
+
 const verifyAdmin = (req, res, next) => {
-  if (!req.user) {
-    return res.status(401).json({
-      message: "Unauthorized.",
-    });
-  }
-
-  if (req.user.role !== "admin" && req.user.role !== "superadmin") {
-    return res.status(403).json({
-      message: "Admin access only.",
-    });
-  }
-
-  next();
+  return allowRoles("admin", "superadmin")(req, res, next);
 };
 
 const verifySuperadmin = (req, res, next) => {
-  if (!req.user) {
-    return res.status(401).json({
-      message: "Unauthorized.",
-    });
-  }
-
-  if (req.user.role !== "superadmin") {
-    return res.status(403).json({
-      message: "Superadmin access only.",
-    });
-  }
-
-  next();
+  return allowRoles("superadmin")(req, res, next);
 };
 
 module.exports = {
   verifyToken,
+  allowRoles,
+  verifyCitizen,
   verifyAdmin,
   verifySuperadmin,
 };

@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { GoogleLogin } from "@react-oauth/google";
 import Navbar from "./navbar";
 import "../css/login.css";
-import google from "../assets/google.png";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -15,7 +15,20 @@ export default function Login() {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  const googleClientReady = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
+
+  const redirectByRole = (user) => {
+    if (user.role === "admin") {
+      navigate("/admin");
+    } else if (user.role === "superadmin") {
+      navigate("/superadmin");
+    } else {
+      navigate("/citizen");
+    }
+  };
 
   const handleChange = (e) => {
     setForm({
@@ -63,13 +76,7 @@ export default function Login() {
         setMessageType("success");
 
         setTimeout(() => {
-          if (data.user.role === "admin") {
-            navigate("/admin");
-          } else if (data.user.role === "superadmin") {
-            navigate("/superadmin");
-          } else {
-            navigate("/citizen");
-          }
+          redirectByRole(data.user);
         }, 500);
       } else {
         setMessage(data.message || "Incorrect email or password.");
@@ -82,6 +89,64 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    const credential = credentialResponse?.credential;
+
+    if (!credential) {
+      setMessage("Google sign-in failed. No credential received.");
+      setMessageType("error");
+      return;
+    }
+
+    try {
+      setGoogleLoading(true);
+      setMessage("");
+      setMessageType("");
+
+      const res = await fetch("http://localhost:5001/api/google-login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ credential }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setMessage(data.message || "Google sign-in failed.");
+        setMessageType("error");
+        return;
+      }
+
+      localStorage.setItem("user", JSON.stringify(data.user));
+      localStorage.setItem("token", data.token);
+
+      setMessage("Google sign-in successful! Redirecting...");
+      setMessageType("success");
+
+      setTimeout(() => {
+        redirectByRole(data.user);
+      }, 500);
+    } catch (err) {
+      console.error("GOOGLE LOGIN ERROR:", err);
+      setMessage("Cannot connect to the server for Google sign-in.");
+      setMessageType("error");
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const handleGoogleError = () => {
+    setMessage("Google sign-in was cancelled or failed.");
+    setMessageType("error");
+  };
+
+  const handleForgotPassword = () => {
+    setMessage("Forgot password module is not yet enabled.");
+    setMessageType("error");
   };
 
   return (
@@ -137,7 +202,13 @@ export default function Login() {
               </button>
             </div>
 
-            <div className="forgot">Forgot password?</div>
+            <button
+              type="button"
+              className="forgot"
+              onClick={handleForgotPassword}
+            >
+              Forgot password?
+            </button>
 
             <button type="submit" className="signin-btn" disabled={loading}>
               {loading ? "Signing in..." : "Sign In"}
@@ -145,9 +216,32 @@ export default function Login() {
 
             <div className="divider">or</div>
 
-            <button type="button" className="google-btn">
-              <img src={google} alt="Google logo" /> Sign in with Google
-            </button>
+            <div className="google-login-box">
+              {googleClientReady ? (
+                <>
+                  {googleLoading && (
+                    <p className="google-loading-text">
+                      Connecting to Google...
+                    </p>
+                  )}
+
+                  <GoogleLogin
+                    onSuccess={handleGoogleSuccess}
+                    onError={handleGoogleError}
+                    text="signin_with"
+                    shape="rectangular"
+                    theme="outline"
+                    size="large"
+                    width="304"
+                    useOneTap={false}
+                  />
+                </>
+              ) : (
+                <button type="button" className="google-btn" disabled>
+                  Google Sign-In is not configured
+                </button>
+              )}
+            </div>
           </div>
         </form>
       </div>

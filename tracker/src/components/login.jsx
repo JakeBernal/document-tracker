@@ -29,10 +29,11 @@ export default function Login() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+
     setMessage("");
     setMessageType("");
 
-    if (!form.email || !form.password) {
+    if (!form.email.trim() || !form.password) {
       setMessage("Please enter your email and password.");
       setMessageType("error");
       return;
@@ -138,11 +139,7 @@ export default function Login() {
 
             <div className="forgot">Forgot password?</div>
 
-            <button
-              type="submit"
-              className="signin-btn"
-              disabled={loading}
-            >
+            <button type="submit" className="signin-btn" disabled={loading}>
               {loading ? "Signing in..." : "Sign In"}
             </button>
 

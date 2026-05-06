@@ -98,6 +98,41 @@
   box-shadow: 0 0 0 3px rgba(45, 68, 143, 0.12);
 }
 
+/* password field with show/hide button */
+.password-field {
+  position: relative;
+  width: 100%;
+}
+
+.password-field input {
+  padding-right: 78px;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: #eef2ff;
+  color: #1f3c88;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.password-toggle-btn:hover {
+  background: #dbe4ff;
+}
+
+.password-toggle-btn:focus {
+  outline: 2px solid rgba(31, 60, 136, 0.25);
+  outline-offset: 2px;
+}
+
 /* password guide */
 .password-guide {
   display: block;
@@ -206,5 +241,14 @@
 
   .form {
     padding: 24px 18px;
+  }
+
+  .password-field input {
+    padding-right: 72px;
+  }
+
+  .password-toggle-btn {
+    font-size: 11px;
+    padding: 7px 9px;
   }
 }

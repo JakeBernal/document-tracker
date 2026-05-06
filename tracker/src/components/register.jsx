@@ -16,6 +16,8 @@ export default function Register() {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const isValidEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -125,10 +127,7 @@ export default function Register() {
       }, 900);
     } catch (err) {
       console.error("REGISTER FETCH ERROR:", err);
-      showMessage(
-        "Cannot connect to server. Please check your backend.",
-        "error"
-      );
+      showMessage("Cannot connect to server. Please check your backend.", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -177,14 +176,25 @@ export default function Register() {
             />
 
             <label>Password</label>
-            <input
-              type="password"
-              name="password"
-              value={form.password}
-              onChange={handleChange}
-              placeholder="Example: Citizen123."
-              autoComplete="new-password"
-            />
+            <div className="password-field">
+              <input
+                type={showPassword ? "text" : "password"}
+                name="password"
+                value={form.password}
+                onChange={handleChange}
+                placeholder="Example: Citizen123."
+                autoComplete="new-password"
+              />
+
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? "Hide" : "Show"}
+              </button>
+            </div>
 
             <div className="password-guide">
               Password must have at least 8 characters, 1 uppercase letter, 1
@@ -192,14 +202,27 @@ export default function Register() {
             </div>
 
             <label>Confirm Password</label>
-            <input
-              type="password"
-              name="confirm_password"
-              value={form.confirm_password}
-              onChange={handleChange}
-              placeholder="Re-enter your password"
-              autoComplete="new-password"
-            />
+            <div className="password-field">
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                name="confirm_password"
+                value={form.confirm_password}
+                onChange={handleChange}
+                placeholder="Re-enter your password"
+                autoComplete="new-password"
+              />
+
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowConfirmPassword((prev) => !prev)}
+                aria-label={
+                  showConfirmPassword ? "Hide confirm password" : "Show confirm password"
+                }
+              >
+                {showConfirmPassword ? "Hide" : "Show"}
+              </button>
+            </div>
 
             <button
               type="submit"

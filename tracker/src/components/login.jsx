@@ -6,18 +6,35 @@ import google from "../assets/google.png";
 
 export default function Login() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ email: "", password: "" });
-  const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const [form, setForm] = useState({
+    email: "",
+    password: "",
+  });
+
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const handleChange = (e) => {
+    setForm({
+      ...form,
+      [e.target.name]: e.target.value,
+    });
+
+    setMessage("");
+    setMessageType("");
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setMessage("");
+    setMessageType("");
 
     if (!form.email || !form.password) {
-      setMessage("Please enter your email and password!");
+      setMessage("Please enter your email and password.");
+      setMessageType("error");
       return;
     }
 
@@ -26,30 +43,41 @@ export default function Login() {
     try {
       const res = await fetch("http://localhost:5001/api/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: form.email.trim().toLowerCase(),
+          password: form.password,
+        }),
       });
 
       const data = await res.json();
 
       if (res.ok) {
-        // Store both user and JWT token
         localStorage.setItem("user", JSON.stringify(data.user));
         localStorage.setItem("token", data.token);
 
         setMessage("Login successful! Redirecting...");
+        setMessageType("success");
 
-        // Redirect based on role
         setTimeout(() => {
-          if (data.user.role === "admin") navigate("/admin");
-          else navigate("/citizen");
+          if (data.user.role === "admin") {
+            navigate("/admin");
+          } else if (data.user.role === "superadmin") {
+            navigate("/superadmin");
+          } else {
+            navigate("/citizen");
+          }
         }, 500);
       } else {
-        setMessage(data.message || "Incorrect email or password!");
+        setMessage(data.message || "Incorrect email or password.");
+        setMessageType("error");
       }
     } catch (err) {
       console.error("LOGIN ERROR:", err);
-      setMessage("Cannot connect to the server. Is backend running?");
+      setMessage("Cannot connect to the server. Please check your backend.");
+      setMessageType("error");
     } finally {
       setLoading(false);
     }
@@ -58,13 +86,22 @@ export default function Login() {
   return (
     <div>
       <Navbar />
+
       <div className="login-container">
         <div className="tabs">
           <span className="active">Login</span>
           <span onClick={() => navigate("/signup")}>Register</span>
         </div>
 
-        {message && <p style={{ color: "red", fontSize: "15px" }}>{message}</p>}
+        {message && (
+          <p
+            className={`form-message ${
+              messageType === "success" ? "success-message" : "error-message"
+            }`}
+          >
+            {message}
+          </p>
+        )}
 
         <form onSubmit={handleLogin}>
           <div className="form">
@@ -75,16 +112,29 @@ export default function Login() {
               value={form.email}
               onChange={handleChange}
               placeholder="you@example.com"
+              autoComplete="email"
             />
 
             <label>Password</label>
-            <input
-              type="password"
-              name="password"
-              value={form.password}
-              onChange={handleChange}
-              placeholder="Your password"
-            />
+            <div className="password-field">
+              <input
+                type={showPassword ? "text" : "password"}
+                name="password"
+                value={form.password}
+                onChange={handleChange}
+                placeholder="Your password"
+                autoComplete="current-password"
+              />
+
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? "Hide" : "Show"}
+              </button>
+            </div>
 
             <div className="forgot">Forgot password?</div>
 

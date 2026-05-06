@@ -592,7 +592,7 @@ app.post("/api/forgot-password", async (req, res) => {
             const mailOptions = {
               from: process.env.EMAIL_USER,
               to: cleanedEmail,
-              subject: "Password Reset Request - Document Tracker",
+              subject: "Password Reset Request - Baranggay Document Tracker",
               html: `
                 <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
                   <h2 style="color: #333;">Password Reset Request</h2>

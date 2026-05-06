@@ -13,6 +13,7 @@ import Receipt from "./pages/receipt";
 import Reports from "./pages/reports";
 import Feedback from "./pages/feedback";
 import EditRequest from "./pages/EditRequest";
+import Profile from "./pages/profile";
 
 import AdminRoute from "./routes/AdminRoute";
 
@@ -34,6 +35,7 @@ function App() {
       <Route path="/receipt/:requestId" element={<Receipt />} />
       <Route path="/edit-request/:id" element={<EditRequest />} />
       <Route path="/EditRequest/:id" element={<EditRequest />} />
+      <Route path="/profile" element={<Profile />} />
 
       {/* Admin / Superadmin protected routes */}
       <Route

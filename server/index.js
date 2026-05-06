@@ -25,6 +25,112 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+// ================= SIMPLE SECURITY HEADERS =================
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  next();
+});
+
+// ================= VALIDATION HELPERS =================
+const cleanText = (value) => {
+  return String(value || "").trim();
+};
+
+const cleanEmail = (value) => {
+  return String(value || "").trim().toLowerCase();
+};
+
+const isValidEmail = (email) => {
+  /*
+    Required email format:
+    - Has text before @
+    - Has @ symbol
+    - Has domain name
+    - Has domain extension
+
+    Valid examples:
+    jesse@gmail.com
+    admin@outlook.com
+    superadmin@papertrail.com
+  */
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  return emailRegex.test(cleanEmail(email));
+};
+
+const isStrongPassword = (password) => {
+  /*
+    Required password format:
+    - At least 8 characters
+    - At least 1 uppercase letter
+    - At least 1 lowercase letter
+    - At least 1 number
+    - At least 1 special character
+
+    Example: Jessezero2.
+  */
+  const passwordRegex =
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$/;
+
+  return passwordRegex.test(password);
+};
+
+const isValidName = (name) => {
+  return name.length >= 2 && name.length <= 100;
+};
+
+const buildSafeUser = (user) => {
+  return {
+    id: user.id,
+    full_name: user.full_name,
+    email: user.email,
+    role: user.role,
+  };
+};
+
+// ================= SIMPLE LOGIN ATTEMPT LIMITER =================
+const loginAttempts = new Map();
+
+const getLoginAttempt = (email) => {
+  return loginAttempts.get(email) || {
+    count: 0,
+    lockedUntil: 0,
+  };
+};
+
+const recordFailedLogin = (email) => {
+  const current = getLoginAttempt(email);
+  const nextCount = current.count + 1;
+
+  const lockedUntil =
+    nextCount >= 5 ? Date.now() + 5 * 60 * 1000 : current.lockedUntil;
+
+  loginAttempts.set(email, {
+    count: nextCount,
+    lockedUntil,
+  });
+};
+
+const resetLoginAttempt = (email) => {
+  loginAttempts.delete(email);
+};
+
+const isLoginLocked = (email) => {
+  const current = getLoginAttempt(email);
+
+  if (!current.lockedUntil) {
+    return false;
+  }
+
+  if (Date.now() > current.lockedUntil) {
+    loginAttempts.delete(email);
+    return false;
+  }
+
+  return true;
+};
+
 // ================= CORS =================
 const corsOptions = {
   origin: "http://localhost:5173",
@@ -36,8 +142,8 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // ================= BODY PARSER =================
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // ================= SERVE UPLOADED FILES =================
 app.use("/uploads", express.static(uploadsDir));
@@ -52,27 +158,92 @@ app.use((req, res, next) => {
 // ================= HEALTH CHECK =================
 app.get("/api/health", (req, res) => {
   return res.status(200).json({
-    message: "Server is running",
+    message: "Server is running.",
     port: PORT,
   });
 });
 
-// ================= AUTH ROUTES =================
-app.post("/api/register", async (req, res) => {
-  const { full_name, email, password } = req.body;
+// ================= AUTH RULES =================
+app.get("/api/auth-rules", (req, res) => {
+  return res.status(200).json({
+    message: "Authentication rules loaded.",
+    email_rules: [
+      "Email must contain a username.",
+      "Email must contain @.",
+      "Email must contain a domain name.",
+      "Email must contain a domain extension.",
+    ],
+    email_examples: [
+      "jesse@gmail.com",
+      "admin@outlook.com",
+      "superadmin@papertrail.com",
+    ],
+    password_rules: [
+      "At least 8 characters.",
+      "At least 1 uppercase letter.",
+      "At least 1 lowercase letter.",
+      "At least 1 number.",
+      "At least 1 special character.",
+    ],
+    password_example: "Jessezero2.",
+  });
+});
 
-  if (!full_name || !email || !password) {
+// Backward-compatible endpoint if frontend already uses it
+app.get("/api/password-rules", (req, res) => {
+  return res.status(200).json({
+    message: "Password rules loaded.",
+    rules: [
+      "At least 8 characters.",
+      "At least 1 uppercase letter.",
+      "At least 1 lowercase letter.",
+      "At least 1 number.",
+      "At least 1 special character.",
+    ],
+    example: "Jessezero2.",
+  });
+});
+
+// ================= AUTH ROUTES =================
+
+// REGISTER
+app.post("/api/register", async (req, res) => {
+  const fullName = cleanText(req.body.full_name);
+  const email = cleanEmail(req.body.email);
+  const password = String(req.body.password || "");
+
+  if (!fullName || !email || !password) {
     return res.status(400).json({
       message: "Please fill in all fields.",
     });
   }
 
+  if (!isValidName(fullName)) {
+    return res.status(400).json({
+      message: "Full name must be from 2 to 100 characters.",
+    });
+  }
+
+  if (!isValidEmail(email)) {
+    return res.status(400).json({
+      message:
+        "Please enter a valid email address. Example: jesse@gmail.com",
+    });
+  }
+
+  if (!isStrongPassword(password)) {
+    return res.status(400).json({
+      message:
+        "Password must be at least 8 characters and include uppercase, lowercase, number, and special character. Example: Jessezero2.",
+    });
+  }
+
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     db.query(
       "INSERT INTO users (full_name, email, password, role) VALUES (?, ?, ?, ?)",
-      [full_name, email, hashedPassword, "citizen"],
+      [fullName, email, hashedPassword, "citizen"],
       (err, result) => {
         if (err) {
           if (err.code === "ER_DUP_ENTRY") {
@@ -105,8 +276,10 @@ app.post("/api/register", async (req, res) => {
   }
 });
 
+// LOGIN
 app.post("/api/login", (req, res) => {
-  const { email, password } = req.body;
+  const email = cleanEmail(req.body.email);
+  const password = String(req.body.password || "");
 
   if (!email || !password) {
     return res.status(400).json({
@@ -114,68 +287,87 @@ app.post("/api/login", (req, res) => {
     });
   }
 
-  db.query("SELECT * FROM users WHERE email = ?", [email], async (err, results) => {
-    if (err) {
-      console.error("LOGIN DATABASE ERROR:", err);
+  if (!isValidEmail(email)) {
+    return res.status(400).json({
+      message:
+        "Please enter a valid email address. Example: jesse@gmail.com",
+    });
+  }
 
-      return res.status(500).json({
-        message: "Database error.",
-        error: err.message,
-      });
-    }
+  if (!process.env.JWT_SECRET) {
+    return res.status(500).json({
+      message: "JWT secret is not configured.",
+    });
+  }
 
-    if (results.length === 0) {
-      return res.status(401).json({
-        message: "User not found.",
-      });
-    }
+  if (isLoginLocked(email)) {
+    return res.status(429).json({
+      message:
+        "Too many failed login attempts. Please try again after 5 minutes.",
+    });
+  }
 
-    try {
-      const user = results[0];
-      const passwordMatched = await bcrypt.compare(password, user.password);
+  db.query(
+    "SELECT * FROM users WHERE email = ? LIMIT 1",
+    [email],
+    async (err, results) => {
+      if (err) {
+        console.error("LOGIN DATABASE ERROR:", err);
 
-      if (!passwordMatched) {
-        return res.status(401).json({
-          message: "Wrong password.",
-        });
-      }
-
-      if (!process.env.JWT_SECRET) {
         return res.status(500).json({
-          message: "JWT secret is not configured.",
+          message: "Database error.",
+          error: err.message,
         });
       }
 
-      const token = jwt.sign(
-        {
-          id: user.id,
-          full_name: user.full_name,
-          email: user.email,
-          role: user.role,
-        },
-        process.env.JWT_SECRET,
-        { expiresIn: "2h" }
-      );
+      if (results.length === 0) {
+        recordFailedLogin(email);
 
-      return res.status(200).json({
-        message: "Login success.",
-        user: {
-          id: user.id,
-          full_name: user.full_name,
-          email: user.email,
-          role: user.role,
-        },
-        token,
-      });
-    } catch (compareErr) {
-      console.error("BCRYPT COMPARE ERROR:", compareErr);
+        return res.status(401).json({
+          message: "Invalid email or password.",
+        });
+      }
 
-      return res.status(500).json({
-        message: "Server error.",
-        error: compareErr.message,
-      });
+      try {
+        const user = results[0];
+        const passwordMatched = await bcrypt.compare(password, user.password);
+
+        if (!passwordMatched) {
+          recordFailedLogin(email);
+
+          return res.status(401).json({
+            message: "Invalid email or password.",
+          });
+        }
+
+        resetLoginAttempt(email);
+
+        const token = jwt.sign(
+          {
+            id: user.id,
+            full_name: user.full_name,
+            email: user.email,
+            role: user.role,
+          },
+          process.env.JWT_SECRET,
+          { expiresIn: "2h" }
+        );
+
+        return res.status(200).json({
+          message: "Login success.",
+          user: buildSafeUser(user),
+          token,
+        });
+      } catch (compareErr) {
+        console.error("BCRYPT COMPARE ERROR:", compareErr);
+
+        return res.status(500).json({
+          message: "Server error.",
+          error: compareErr.message,
+        });
+      }
     }
-  });
+  );
 });
 
 // ================= API ROUTES =================

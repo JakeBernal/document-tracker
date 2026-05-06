@@ -18,12 +18,23 @@ export default function Checkout() {
 
   const checkoutData = location.state || fallbackDraft;
 
-  const [paymentProof, setPaymentProof] = useState(null);
-  const [paymentProofName, setPaymentProofName] = useState("");
-  const [paymentReference, setPaymentReference] = useState("");
-  const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const transactionNumber = useMemo(() => {
+    const existingTransactionNumber = sessionStorage.getItem(
+      "checkoutTransactionNumber"
+    );
+
+    if (existingTransactionNumber) {
+      return existingTransactionNumber;
+    }
+
+    const generatedTransactionNumber = `TXN-${Date.now()}`;
+    sessionStorage.setItem(
+      "checkoutTransactionNumber",
+      generatedTransactionNumber
+    );
+
+    return generatedTransactionNumber;
+  }, []);
 
   const selectedDoc = useMemo(() => {
     if (checkoutData?.selectedDoc) {
@@ -36,6 +47,13 @@ export default function Checkout() {
 
     return null;
   }, [checkoutData]);
+
+  const [paymentProof, setPaymentProof] = useState(null);
+  const [paymentProofName, setPaymentProofName] = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!checkoutData || !selectedDoc) {
     return (
@@ -72,29 +90,33 @@ export default function Checkout() {
   }
 
   const paymentMethod = checkoutData.paymentMethod || "Onsite Payment";
+
   const isOnlinePayment =
     paymentMethod === "GCash" || paymentMethod === "PayMaya";
 
   const documentFile = checkoutData.file || null;
   const documentFileName = checkoutData.fileName || "No file selected";
 
+  const rawDocumentFee =
+    checkoutData.amountDue ||
+    (selectedDoc.fee === "Free"
+      ? "0.00"
+      : selectedDoc.fee === "Varies"
+      ? "Varies"
+      : String(selectedDoc.fee || "0.00").replace("₱", "").trim());
+
   const documentFee =
-  checkoutData.amountDue ||
-  (selectedDoc.fee === "Free"
-    ? "0.00"
-    : selectedDoc.fee === "Varies"
-    ? "Varies"
-    : String(selectedDoc.fee || "0.00").replace("₱", "").trim());
+    rawDocumentFee === "Varies"
+      ? "Varies"
+      : Number(rawDocumentFee || 0).toFixed(2);
 
-const systemFee =
-  documentFee === "0.00" || documentFee === "Varies" ? "0.00" : "10.00";
+  const systemFee =
+    documentFee === "0.00" || documentFee === "Varies" ? "0.00" : "10.00";
 
-const totalAmount =
-  documentFee === "Varies"
-    ? "Varies"
-    : (Number(documentFee) + Number(systemFee)).toFixed(2);
-
-  const receiptNumber = `PT-${Date.now()}`;
+  const totalAmount =
+    documentFee === "Varies"
+      ? "Varies"
+      : (Number(documentFee) + Number(systemFee)).toFixed(2);
 
   const paymentAccount = (() => {
     const category = selectedDoc.category || checkoutData.category;
@@ -140,8 +162,8 @@ const totalAmount =
 
   const paymentMethodForDatabase = (() => {
     if (paymentMethod === "GCash") return "GCash";
+    if (paymentMethod === "PayMaya") return "PayMaya";
     if (paymentMethod === "Onsite Payment") return "Cash";
-    if (paymentMethod === "PayMaya") return "Other";
 
     return "Other";
   })();
@@ -149,13 +171,50 @@ const totalAmount =
   const handlePaymentProofChange = (e) => {
     const selectedFile = e.target.files[0];
 
-    setPaymentProof(selectedFile || null);
-    setPaymentProofName(selectedFile ? selectedFile.name : "");
+    setMessage("");
+    setMessageType("");
+
+    if (!selectedFile) {
+      setPaymentProof(null);
+      setPaymentProofName("");
+      return;
+    }
+
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "application/pdf",
+    ];
+
+    const maxFileSize = 5 * 1024 * 1024;
+
+    if (!allowedTypes.includes(selectedFile.type)) {
+      setPaymentProof(null);
+      setPaymentProofName("");
+      e.target.value = "";
+
+      setMessage("Invalid payment proof. Please upload JPG, PNG, WEBP, or PDF.");
+      setMessageType("error");
+      return;
+    }
+
+    if (selectedFile.size > maxFileSize) {
+      setPaymentProof(null);
+      setPaymentProofName("");
+      e.target.value = "";
+
+      setMessage("Payment proof is too large. Maximum file size is 5 MB.");
+      setMessageType("error");
+      return;
+    }
+
+    setPaymentProof(selectedFile);
+    setPaymentProofName(selectedFile.name);
   };
 
   const renderApplicantFields = () => {
     const fields = checkoutData.formData || {};
-
     const entries = Object.entries(fields);
 
     if (entries.length === 0) {
@@ -174,7 +233,7 @@ const totalAmount =
             .replaceAll("_", " ")
             .replace(/\b\w/g, (char) => char.toUpperCase())}
         </span>
-        <span className="checkout-value">{value || "—"}</span>
+        <span className="checkout-value">{value || "—"} </span>
       </div>
     ));
   };
@@ -184,12 +243,16 @@ const totalAmount =
       return "The uploaded requirement file was not detected. Please go back and upload the required document again.";
     }
 
+    if (!selectedDoc.id) {
+      return "Document type was not detected. Please go back and select the document again.";
+    }
+
     if (isOnlinePayment && !paymentReference.trim()) {
-    return `Please enter the ${paymentMethod} reference number.`;
+      return `Please enter the ${paymentMethod} reference number.`;
     }
 
     if (isOnlinePayment && !paymentProof) {
-    return `Please upload proof of payment for ${paymentMethod}.`;
+      return `Please upload proof of payment for ${paymentMethod}.`;
     }
 
     return "";
@@ -219,11 +282,17 @@ const totalAmount =
       const requestData = new FormData();
 
       requestData.append("document_type_id", selectedDoc.id);
+      requestData.append("payment_method", paymentMethodForDatabase);
+      requestData.append(
+        "payment_reference",
+        isOnlinePayment ? paymentReference.trim() : ""
+      );
+      requestData.append("amount_due", totalAmount === "Varies" ? "0" : totalAmount);
 
       requestData.append(
         "notes",
         JSON.stringify({
-          receipt_number: receiptNumber,
+          transaction_number: transactionNumber,
           document_name: checkoutData.selectedDocName,
           selected_form: selectedDoc.selectedChoiceId || null,
           parent_document: selectedDoc.parentTitle || null,
@@ -231,7 +300,9 @@ const totalAmount =
           fields: checkoutData.formData || {},
           payment_method: paymentMethod,
           payment_method_for_database: paymentMethodForDatabase,
-          payment_reference_number: paymentReference.trim() || null,
+          payment_reference_number: isOnlinePayment
+            ? paymentReference.trim()
+            : null,
           document_fee: documentFee,
           system_fee: systemFee,
           total_amount: totalAmount,
@@ -239,31 +310,20 @@ const totalAmount =
           payment_account_number: paymentAccount.number,
           uploaded_requirement_file: documentFileName,
           payment_proof_file: paymentProofName || null,
-          payment_note: isOnlinePayment
-            ? "Payment proof uploaded for admin verification."
-            : "Payment will be made onsite.",
+          payment_status_note: isOnlinePayment
+            ? "Payment proof submitted. Payment is pending admin verification."
+            : "Payment will be completed onsite and confirmed by barangay staff.",
+          security_note:
+            "This transaction summary is not an official receipt. Official receipt is generated only after admin or superadmin payment confirmation.",
           created_at: new Date().toISOString(),
         })
       );
 
-      requestData.append("payment_method", paymentMethodForDatabase);
-      requestData.append(
-        "payment_reference",
-        isOnlinePayment ? paymentReference.trim() : receiptNumber
-        );
-      requestData.append("amount_due", totalAmount === "Varies" ? 0 : totalAmount);
-
-      /*
-        Current backend route uses upload.single("file").
-        This sends the required document attachment as "file".
-        Payment proof is recorded by filename in notes.
-        To upload payment proof as a second file, backend must use upload.fields().
-      */
       requestData.append("file", documentFile);
 
-        if (isOnlinePayment && paymentProof) {
+      if (isOnlinePayment && paymentProof) {
         requestData.append("payment_proof", paymentProof);
-        }
+      }
 
       const res = await fetch("http://localhost:5001/api/requests", {
         method: "POST",
@@ -282,9 +342,10 @@ const totalAmount =
       }
 
       sessionStorage.removeItem("checkoutDraft");
+      sessionStorage.removeItem("checkoutTransactionNumber");
       localStorage.removeItem("paymentData");
 
-      setMessage("Request submitted successfully!");
+      setMessage("Request submitted successfully! Payment is pending verification.");
       setMessageType("success");
 
       setTimeout(() => {
@@ -314,9 +375,7 @@ const totalAmount =
             <h2>Request Details</h2>
 
             {message && (
-              <p className={`checkout-message ${messageType}`}>
-                {message}
-              </p>
+              <p className={`checkout-message ${messageType}`}>{message}</p>
             )}
 
             <div className="checkout-detail-row">
@@ -354,7 +413,7 @@ const totalAmount =
               <span className="checkout-value">{documentFileName}</span>
             </div>
 
-            <h2 style={{ marginTop: "28px" }}>Applicant Details</h2>
+            <h2 className="checkout-section-gap">Applicant Details</h2>
 
             {renderApplicantFields()}
           </div>
@@ -371,12 +430,12 @@ const totalAmount =
                 <p>Document Fee</p>
                 <h3>{documentFee === "Varies" ? "Varies" : `₱${documentFee}`}</h3>
 
-                <p style={{ marginTop: "14px" }}>System Fee</p>
+                <p className="amount-label-gap">System Fee</p>
                 <h3>₱{systemFee}</h3>
 
-                <p style={{ marginTop: "14px" }}>Total Amount to Pay</p>
+                <p className="amount-label-gap">Total Amount to Pay</p>
                 <h3>{totalAmount === "Varies" ? "Varies" : `₱${totalAmount}`}</h3>
-                </div>
+              </div>
 
               {isOnlinePayment ? (
                 <div className="payment-instructions">
@@ -408,79 +467,89 @@ const totalAmount =
               )}
 
               {isOnlinePayment && (
-  <>
-    <div className="form-group">
-      <label>
-        {paymentMethod} Reference Number
-        <span className="required-star"> *</span>
-      </label>
+                <>
+                  <div className="form-group">
+                    <label>
+                      {paymentMethod} Reference Number
+                      <span className="required-star"> *</span>
+                    </label>
 
-      <input
-        type="text"
-        value={paymentReference}
-        onChange={(e) => setPaymentReference(e.target.value)}
-        placeholder="Enter transaction reference number"
-      />
-    </div>
+                    <input
+                      type="text"
+                      value={paymentReference}
+                      onChange={(e) => setPaymentReference(e.target.value)}
+                      placeholder="Enter transaction reference number"
+                    />
+                  </div>
 
-            <div className="form-group">
-            <label>
-                Upload Proof of Payment
-                <span className="required-star"> *</span>
-            </label>
+                  <div className="form-group">
+                    <label>
+                      Upload Proof of Payment
+                      <span className="required-star"> *</span>
+                    </label>
 
-            <input
-                type="file"
-                accept="image/*,.pdf"
-                onChange={handlePaymentProofChange}
-            />
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,application/pdf"
+                      onChange={handlePaymentProofChange}
+                    />
 
-            {paymentProofName && (
-                <p className="selected-file">
-                Selected file: <strong>{paymentProofName}</strong>
-                </p>
-            )}
-            </div>
-        </>
-        )}
+                    {paymentProofName && (
+                      <p className="selected-file">
+                        Selected file: <strong>{paymentProofName}</strong>
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="checkout-receipt">
-              <h2>Receipt Preview</h2>
+              <h2>Transaction Summary</h2>
 
-                            {isOnlinePayment && (
-                <p>
-                    <strong>Reference Number:</strong>{" "}
-                    {paymentReference || "Not yet entered"}
-                </p>
-                )}
+              <p className="security-note">
+                This is not an official receipt. Payment will be confirmed only
+                after admin or superadmin verification.
+              </p>
 
-              <div className="receipt-number">{receiptNumber}</div>
+              <div className="transaction-number">{transactionNumber}</div>
 
               <p>
                 <strong>Document:</strong> {checkoutData.selectedDocName}
               </p>
+
               <p>
-                <strong>Payment:</strong> {paymentMethod}
+                <strong>Payment Method:</strong> {paymentMethod}
               </p>
 
+              {isOnlinePayment && (
                 <p>
+                  <strong>Reference Number:</strong>{" "}
+                  {paymentReference || "Not yet entered"}
+                </p>
+              )}
+
+              <p>
                 <strong>Document Fee:</strong>{" "}
                 {documentFee === "Varies" ? "Varies" : `₱${documentFee}`}
-                </p>
-                <p>
+              </p>
+
+              <p>
                 <strong>System Fee:</strong> ₱{systemFee}
-                </p>
-                <p>
+              </p>
+
+              <p>
                 <strong>Total Amount:</strong>{" "}
                 {totalAmount === "Varies" ? "Varies" : `₱${totalAmount}`}
-                </p>
+              </p>
 
               <p>
                 <strong>Status:</strong>{" "}
-                {isOnlinePayment
-                  ? "For payment verification"
-                  : "For onsite payment"}
+                <span className="pending-status">
+                  {isOnlinePayment
+                    ? "Payment Pending Admin Verification"
+                    : "For Onsite Payment Confirmation"}
+                </span>
               </p>
 
               <div className="checkout-actions">

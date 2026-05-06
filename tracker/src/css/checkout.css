@@ -56,6 +56,10 @@
   margin-bottom: 20px;
 }
 
+.checkout-section-gap {
+  margin-top: 28px;
+}
+
 /* TEXT DETAILS */
 .checkout-info p,
 .checkout-summary p,
@@ -129,6 +133,10 @@
   margin-top: 6px;
 }
 
+.amount-label-gap {
+  margin-top: 14px !important;
+}
+
 /* PAYMENT INSTRUCTIONS */
 .payment-instructions {
   background: #f8fafc;
@@ -188,6 +196,12 @@
   padding: 12px;
 }
 
+/* REQUIRED MARK */
+.required-star {
+  color: #dc2626;
+  font-weight: 800;
+}
+
 /* SELECTED FILE */
 .selected-file {
   margin-top: 8px;
@@ -199,7 +213,7 @@
   color: #111827;
 }
 
-/* RECEIPT STYLE */
+/* TRANSACTION SUMMARY */
 .checkout-receipt {
   position: relative;
   overflow: hidden;
@@ -215,6 +229,18 @@
   background: #1f3c88;
 }
 
+.security-note {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412 !important;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 14px !important;
+  font-weight: 700;
+  margin-bottom: 16px !important;
+}
+
+.transaction-number,
 .receipt-number {
   background: #f3f4f6;
   border-radius: 10px;
@@ -222,6 +248,17 @@
   font-weight: 700;
   color: #1f3c88;
   margin-bottom: 18px;
+  word-break: break-word;
+}
+
+.pending-status {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 /* ACTION BUTTONS */
@@ -331,6 +368,10 @@
   .checkout-detail-row {
     grid-template-columns: 1fr;
     gap: 4px;
+  }
+
+  .amount-box h3 {
+    font-size: 28px;
   }
 
   .checkout-actions {

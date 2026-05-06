@@ -8,6 +8,9 @@ export default function Navbar() {
 
   const [user, setUser] = useState(null);
   const [open, setOpen] = useState(false);
+  const [verificationStatus, setVerificationStatus] =
+    useState("Not Verified");
+
   const dropdownRef = useRef(null);
 
   useEffect(() => {
@@ -19,7 +22,21 @@ export default function Navbar() {
     }
 
     try {
-      setUser(JSON.parse(storedUser));
+      const parsedUser = JSON.parse(storedUser);
+      setUser(parsedUser);
+
+      if (parsedUser.role === "citizen") {
+        const savedProfileRaw = localStorage.getItem(
+          `citizen_profile_${parsedUser.id}`
+        );
+
+        if (savedProfileRaw) {
+          const savedProfile = JSON.parse(savedProfileRaw);
+          setVerificationStatus(
+            savedProfile.verification_status || "Not Verified"
+          );
+        }
+      }
     } catch (error) {
       localStorage.removeItem("user");
       localStorage.removeItem("token");
@@ -51,7 +68,7 @@ export default function Navbar() {
     : "U";
 
   const displayRole = isSuperadmin
-    ? "Super Admin"
+    ? "Superadmin"
     : isAdmin
     ? "Admin"
     : "Citizen";
@@ -75,12 +92,7 @@ export default function Navbar() {
       return;
     }
 
-    if (isSuperadmin) {
-      goTo("/superadmin");
-      return;
-    }
-
-    if (isAdmin) {
+    if (isAdminUser) {
       goTo("/admin");
       return;
     }
@@ -169,7 +181,20 @@ export default function Navbar() {
                     <div className="dropdown-user-info">
                       <p className="user-name">{user.full_name}</p>
                       <small className="user-email">{user.email}</small>
+
                       <span className="role-badge">{displayRole}</span>
+
+                      {isCitizen && (
+                        <span
+                          className={
+                            verificationStatus === "Fully Verified"
+                              ? "role-badge verified-badge"
+                              : "role-badge not-verified-badge"
+                          }
+                        >
+                          {verificationStatus}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -182,16 +207,23 @@ export default function Navbar() {
                   >
                     <span className="menu-icon">📊</span>
                     <span className="menu-text">
-                      {isSuperadmin
-                        ? "Superadmin Dashboard"
-                        : isAdmin
-                        ? "Admin Dashboard"
-                        : "Citizen Dashboard"}
+                      {isAdminUser ? "Admin Dashboard" : "Citizen Dashboard"}
                     </span>
                   </button>
 
                   {isCitizen && (
                     <>
+                      <button
+                        type="button"
+                        className="dropdown-item"
+                        onClick={() => goTo("/profile")}
+                      >
+                        <span className="menu-icon">👤</span>
+                        <span className="menu-text">
+                          Profile Verification
+                        </span>
+                      </button>
+
                       <button
                         type="button"
                         className="dropdown-item"
@@ -214,6 +246,15 @@ export default function Navbar() {
 
                   {isAdminUser && (
                     <>
+                      <button
+                        type="button"
+                        className="dropdown-item"
+                        onClick={() => goTo("/admin")}
+                      >
+                        <span className="menu-icon">🗂️</span>
+                        <span className="menu-text">Manage Requests</span>
+                      </button>
+
                       <button
                         type="button"
                         className="dropdown-item"
@@ -241,6 +282,17 @@ export default function Navbar() {
                         <span className="menu-text">Feedback</span>
                       </button>
                     </>
+                  )}
+
+                  {!isCitizen && (
+                    <button
+                      type="button"
+                      className="dropdown-item"
+                      onClick={() => goTo("/profile")}
+                    >
+                      <span className="menu-icon">👤</span>
+                      <span className="menu-text">My Profile</span>
+                    </button>
                   )}
 
                   <hr />

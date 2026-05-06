@@ -1,12 +1,5 @@
-import React from 'react'
-import Register from "../components/register"
+import Register from "../components/register";
 
-function signup() {
-  return (
-   <>
-    <Register/>
-   </>
-  )
+export default function Signup() {
+  return <Register />;
 }
-
-export default signup

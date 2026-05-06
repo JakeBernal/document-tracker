@@ -138,7 +138,11 @@ export default function Login() {
 
             <div className="forgot">Forgot password?</div>
 
-            <button type="submit" className="signin-btn" disabled={loading}>
+            <button
+              type="submit"
+              className="signin-btn"
+              disabled={loading}
+            >
               {loading ? "Signing in..." : "Sign In"}
             </button>
 

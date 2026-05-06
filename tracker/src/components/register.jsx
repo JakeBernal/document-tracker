@@ -122,6 +122,9 @@ export default function Register() {
         confirm_password: "",
       });
 
+      setShowPassword(false);
+      setShowConfirmPassword(false);
+
       setTimeout(() => {
         navigate("/signin");
       }, 900);
@@ -217,7 +220,9 @@ export default function Register() {
                 className="password-toggle-btn"
                 onClick={() => setShowConfirmPassword((prev) => !prev)}
                 aria-label={
-                  showConfirmPassword ? "Hide confirm password" : "Show confirm password"
+                  showConfirmPassword
+                    ? "Hide confirm password"
+                    : "Show confirm password"
                 }
               >
                 {showConfirmPassword ? "Hide" : "Show"}

@@ -1,0 +1,211 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
+
+/* ─── Footer Shell ─────────────────────────── */
+
+.footer {
+  background: #1a2e6e;
+  color: #fff;
+  font-family: 'Poppins', sans-serif;
+  padding: 60px 40px 0;
+  margin-top: 0;
+}
+
+/* ─── Container Width ──────────────────────── */
+
+.footer-top,
+.footer-bottom {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ─── Top Layout ──────────────────────────── */
+
+.footer-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 60px;
+  flex-wrap: wrap;
+  padding-bottom: 48px;
+}
+
+/* ─── Shared Column Styling ───────────────── */
+
+.footer-brand,
+.footer-col {
+  flex: 1;
+  min-width: 220px;
+  max-width: 320px;
+  text-align: left;
+}
+
+/* ─── Brand Column ────────────────────────── */
+
+.footer-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.footer-logo {
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+
+.footer-brand p {
+  font-size: 0.92rem;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.8;
+}
+
+/* ─── Column Titles ───────────────────────── */
+
+.footer-col h4 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  margin-bottom: 20px;
+}
+
+/* ─── Links ───────────────────────────────── */
+
+.footer-col ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.footer-col ul li a {
+  font-size: 0.92rem;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.78);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.footer-col ul li a:hover {
+  color: #ffffff;
+}
+
+/* ─── Contact List ────────────────────────── */
+
+.footer-contact-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.footer-contact-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  font-size: 0.92rem;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.6;
+}
+
+.footer-contact-label {
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: #7b9cff;
+}
+
+/* ─── Divider ─────────────────────────────── */
+
+.footer-divider {
+  border: none;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ─── Bottom Bar ──────────────────────────── */
+
+.footer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 20px 0;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.footer-bottom p {
+  font-size: 0.82rem;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.footer-bottom-links {
+  display: flex;
+  gap: 24px;
+}
+
+.footer-bottom-links a {
+  font-size: 0.82rem;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.45);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.footer-bottom-links a:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* ─── Responsive ──────────────────────────── */
+
+@media (max-width: 900px) {
+  .footer {
+    padding: 50px 32px 0;
+  }
+
+  .footer-top {
+    gap: 40px;
+  }
+}
+
+@media (max-width: 560px) {
+  .footer {
+    padding: 48px 24px 0;
+  }
+
+  .footer-top {
+    flex-direction: column;
+    gap: 36px;
+  }
+
+  .footer-brand,
+  .footer-col {
+    max-width: 100%;
+  }
+
+  .footer-bottom {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .footer-bottom-links {
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+}

@@ -81,3 +81,20 @@ img {
   background: var(--primary);
   color: var(--white);
 }
+/* =========================
+   FOOTER FIX
+========================= */
+
+/* Prevent body background from bleeding into footer */
+.footer {
+  background: #1a2e6e !important;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+/* Fix button font override for footer */
+.footer button,
+.footer a {
+  font-family: 'Poppins', sans-serif;
+}

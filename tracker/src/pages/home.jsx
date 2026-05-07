@@ -4,6 +4,8 @@ import Navbar from '../components/navbar';
 import Services from '../components/services';
 import Howitworks from '../components/howitworks';
 import Signup from '../components/register';
+import Contact from "../components/contact"
+import About from "../components/about"
 
 
 export default function home() {
@@ -13,7 +15,9 @@ export default function home() {
       <Hero />
       <Services />
       <Howitworks />
-   
+      <About/>
+      <Contact/>
+      
     </>
   )
 }

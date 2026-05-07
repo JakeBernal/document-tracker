@@ -16,7 +16,6 @@ import Reports from "./pages/reports";
 import Feedback from "./pages/feedback";
 import EditRequest from "./pages/EditRequest";
 import Profile from "./pages/profile";
-
 import AdminRoute from "./routes/AdminRoute";
 
 function App() {

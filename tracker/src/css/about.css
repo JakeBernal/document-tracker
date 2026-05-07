@@ -1,0 +1,249 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ─── Page ─────────────────────────────────── */
+
+.about-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  background: #f5f7fb;
+  font-family: 'Poppins', sans-serif;
+}
+
+/* ─── Card shell ────────────────────────────── */
+
+.about-card {
+  background: #fff;
+  width: 100%;
+  max-width: 850px;
+  border-radius: 20px;
+  box-shadow: 0 10px 40px rgba(47, 78, 161, 0.10);
+  overflow: hidden;
+}
+
+/* ─── Top: split panel ──────────────────────── */
+
+.about-card-top {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 260px;
+}
+
+/* Left panel */
+.about-card-left {
+  padding: 50px 45px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: #fff;
+}
+
+.about-tag {
+  display: inline-block;
+  margin-bottom: 20px;
+  padding: 6px 16px;
+  border-radius: 50px;
+  background: rgba(47, 78, 161, 0.10);
+  color: #2f4ea1;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  width: fit-content;
+}
+
+.about-card-left h1 {
+  font-family: 'Poppins', sans-serif;
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  font-weight: 600;
+  color: #111;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+/* Right panel */
+.about-card-right {
+  background: #2f4ea1;
+  padding: 50px 45px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.about-section-label {
+  font-family: 'Poppins', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 10px;
+}
+
+.about-card-right p {
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.925rem;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.88);
+  line-height: 1.8;
+}
+
+/* ─── Stats row ─────────────────────────────── */
+
+.about-stats {
+  display: flex;
+  border-top: 1px solid rgba(47, 78, 161, 0.08);
+}
+
+.about-stat {
+  flex: 1;
+  padding: 28px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border-right: 1px solid rgba(47, 78, 161, 0.08);
+}
+
+.about-stat:last-child {
+  border-right: none;
+}
+
+.about-stat-number {
+  font-family: 'Poppins', sans-serif;
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: #2f4ea1;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.about-stat-label {
+  font-family: 'Poppins', sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  color: #999;
+  letter-spacing: 0.4px;
+}
+
+/* ─── Bottom: tagline + CTAs ────────────────── */
+
+.about-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 28px 45px;
+  border-top: 1px solid rgba(47, 78, 161, 0.08);
+  flex-wrap: wrap;
+}
+
+.about-card-bottom p {
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 300;
+  color: #777;
+  line-height: 1.65;
+  max-width: 360px;
+}
+
+.about-buttons {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.about-buttons button {
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 12px 22px;
+  border-radius: 8px;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: all 0.25s ease;
+}
+
+.primary {
+  background: #2f4ea1;
+  color: #fff;
+  border: none;
+}
+
+.primary:hover {
+  background: #213671;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(47, 78, 161, 0.30);
+}
+
+.primary:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.secondary {
+  background: transparent;
+  color: #2f4ea1;
+  border: 1.5px solid #2f4ea1;
+}
+
+.secondary:hover {
+  background: #2f4ea1;
+  color: #fff;
+}
+
+/* ─── Responsive ────────────────────────────── */
+
+@media (max-width: 768px) {
+  .about-card-top {
+    grid-template-columns: 1fr;
+  }
+
+  .about-card-left,
+  .about-card-right {
+    padding: 35px 28px;
+  }
+
+  .about-stats {
+    flex-wrap: wrap;
+  }
+
+  .about-stat {
+    min-width: 50%;
+    padding: 20px 24px;
+  }
+
+  .about-card-bottom {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 28px;
+  }
+
+  .about-buttons {
+    width: 100%;
+  }
+
+  .about-buttons button {
+    flex: 1;
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .about-card-left h1 {
+    font-size: 1.5rem;
+  }
+
+  .about-stat {
+    min-width: 100%;
+  }
+}

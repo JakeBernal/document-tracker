@@ -13,6 +13,11 @@ function About() {
           <div className="about-card-left">
             <span className="about-tag">ABOUT US</span>
             <h1>PaperTrail Digital Solutions</h1>
+               <img
+              src="/Online document-bro.png"
+              alt="Login Illustration"
+              className="login-image"
+            />
           </div>
 
           {/* Right — blue panel with copy */}

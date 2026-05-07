@@ -1,4 +1,7 @@
 const db = require("../config/db");
+const { MINIMUM_CITIZEN_AGE, isAtLeastAge } = require("../utils/ageValidation");
+
+const SYSTEM_FEE_AMOUNT = 10;
 
 const query = (sql, params = []) => {
   return new Promise((resolve, reject) => {
@@ -64,6 +67,20 @@ const getFirstUploadedFile = (req, fieldName) => {
   return null;
 };
 
+const getFirstNonEmpty = (...values) => {
+  for (const value of values) {
+    if (value === undefined || value === null) continue;
+
+    const cleanedValue = String(value).trim();
+
+    if (cleanedValue !== "") {
+      return value;
+    }
+  }
+
+  return null;
+};
+
 const allowedPaymentMethods = [
   "None",
   "Cash",
@@ -87,10 +104,15 @@ const cleanPaymentMethod = (method) => {
 const toNumber = (value, fallback = 0) => {
   if (value === undefined || value === null || value === "") return fallback;
 
-  if (value === "Free") return 0;
-  if (value === "Varies") return fallback;
+  const cleanedValue = String(value)
+    .replace("₱", "")
+    .replace(",", "")
+    .trim()
+    .toLowerCase();
 
-  const cleanedValue = String(value).replace("₱", "").replace(",", "").trim();
+  if (cleanedValue === "free") return 0;
+  if (cleanedValue === "varies") return fallback;
+
   const numberValue = Number(cleanedValue);
 
   return Number.isNaN(numberValue) ? fallback : numberValue;
@@ -115,6 +137,296 @@ const generateReceiptNumber = () => {
 
 const isDigitalPaymentMethod = (paymentMethod) => {
   return ["GCash", "PayMaya", "Bank Transfer"].includes(paymentMethod);
+};
+
+const normalizeFieldName = (value) => {
+  return String(value || "")
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+const formatFieldLabel = (value) => {
+  return String(value || "")
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .trim();
+};
+
+const cleanFieldValue = (value) => {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "object") return "";
+
+  return String(value).trim();
+};
+
+const normalizeDateOnly = (value) => {
+  if (!value) return null;
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  }
+
+  const stringValue = String(value).trim();
+
+  if (!stringValue) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(stringValue)) {
+    return stringValue.slice(0, 10);
+  }
+
+  const parsedDate = new Date(stringValue);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return null;
+  }
+
+  const year = parsedDate.getFullYear();
+  const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
+  const day = String(parsedDate.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const isBirthDateRequestField = (fieldName) => {
+  const normalizedFieldName = normalizeFieldName(fieldName);
+  const compactFieldName = normalizedFieldName.replace(/\s+/g, "");
+
+  const exactBirthDateFields = [
+    "date of birth",
+    "birth date",
+    "birthdate",
+    "birthday",
+    "dob",
+    "applicant date of birth",
+    "applicant birth date",
+    "applicant birthdate",
+    "applicant birthday",
+    "partner date of birth",
+    "partner birth date",
+    "partner birthdate",
+    "partner birthday",
+    "spouse date of birth",
+    "spouse birth date",
+    "spouse birthdate",
+    "child date of birth",
+    "child birth date",
+    "child birthdate",
+  ];
+
+  if (exactBirthDateFields.includes(normalizedFieldName)) {
+    return true;
+  }
+
+  return (
+    compactFieldName.includes("dateofbirth") ||
+    compactFieldName.includes("birthdate") ||
+    compactFieldName.includes("birthday") ||
+    compactFieldName === "dob" ||
+    compactFieldName.endsWith("dob")
+  );
+};
+
+const isAgeRequestField = (fieldName) => {
+  const normalizedFieldName = normalizeFieldName(fieldName);
+
+  return (
+    normalizedFieldName === "age" ||
+    normalizedFieldName.endsWith(" age") ||
+    normalizedFieldName.includes(" age ")
+  );
+};
+
+const isLikelyPersonNameField = (fieldName) => {
+  const normalizedFieldName = normalizeFieldName(fieldName);
+
+  const exactNameFields = [
+    "applicant full name",
+    "applicant name",
+    "full name",
+    "name",
+    "recipient name",
+    "requested for",
+    "requested for name",
+    "request for",
+    "request for name",
+    "person named in document",
+    "person name",
+    "document owner",
+    "document owner name",
+    "certificate owner",
+    "certificate owner name",
+    "beneficiary name",
+    "claimant name",
+    "owner name",
+    "child name",
+    "student name",
+    "parent name",
+    "mother name",
+    "father name",
+    "spouse name",
+    "partner full name",
+    "partner name",
+    "deceased name",
+    "business owner name",
+  ];
+
+  if (exactNameFields.includes(normalizedFieldName)) {
+    return true;
+  }
+
+  if (!normalizedFieldName.includes("name")) {
+    return false;
+  }
+
+  const excludedNameFields = [
+    "file name",
+    "payment account name",
+    "account name",
+    "school name",
+    "company name",
+    "school company name",
+    "barangay name",
+    "document name",
+    "uploaded requirement file",
+    "payment proof file",
+  ];
+
+  return !excludedNameFields.some((excludedField) =>
+    normalizedFieldName.includes(excludedField)
+  );
+};
+
+const getPersonNamePriority = (fieldName) => {
+  const normalizedFieldName = normalizeFieldName(fieldName);
+
+  const priorityOrder = [
+    "person named in document",
+    "requested for name",
+    "request for name",
+    "document owner name",
+    "certificate owner name",
+    "recipient name",
+    "beneficiary name",
+    "claimant name",
+    "applicant full name",
+    "applicant name",
+    "full name",
+    "name",
+    "child name",
+    "student name",
+    "mother name",
+    "father name",
+    "spouse name",
+    "partner full name",
+    "partner name",
+    "deceased name",
+    "business owner name",
+  ];
+
+  const index = priorityOrder.indexOf(normalizedFieldName);
+
+  return index === -1 ? 999 : index;
+};
+
+const extractPersonNamedInfo = (parsedNotes) => {
+  const fields =
+    parsedNotes?.fields && typeof parsedNotes.fields === "object"
+      ? parsedNotes.fields
+      : {};
+
+  const personRows = [];
+
+  for (const [fieldName, fieldValue] of Object.entries(fields)) {
+    const cleanedValue = cleanFieldValue(fieldValue);
+
+    if (!cleanedValue) continue;
+    if (!isLikelyPersonNameField(fieldName)) continue;
+
+    personRows.push({
+      key: fieldName,
+      label: formatFieldLabel(fieldName),
+      value: cleanedValue,
+      priority: getPersonNamePriority(fieldName),
+    });
+  }
+
+  personRows.sort((a, b) => {
+    if (a.priority !== b.priority) {
+      return a.priority - b.priority;
+    }
+
+    return a.label.localeCompare(b.label);
+  });
+
+  const uniqueRows = [];
+  const usedValues = new Set();
+
+  for (const row of personRows) {
+    const normalizedValue = row.value.toLowerCase();
+
+    if (usedValues.has(normalizedValue)) continue;
+
+    usedValues.add(normalizedValue);
+
+    uniqueRows.push({
+      key: row.key,
+      label: row.label,
+      value: row.value,
+    });
+  }
+
+  return {
+    primary: uniqueRows[0]?.value || null,
+    rows: uniqueRows,
+  };
+};
+
+const validateRequestFormAgeFields = (parsedNotes) => {
+  const fields = parsedNotes?.fields;
+
+  if (!fields || typeof fields !== "object") {
+    return { isValid: true };
+  }
+
+  for (const [fieldName, fieldValue] of Object.entries(fields)) {
+    if (fieldValue === undefined || fieldValue === null || fieldValue === "") {
+      continue;
+    }
+
+    if (isBirthDateRequestField(fieldName)) {
+      const dateValue = normalizeDateOnly(fieldValue);
+
+      if (!dateValue || !isAtLeastAge(dateValue, MINIMUM_CITIZEN_AGE)) {
+        return {
+          isValid: false,
+          message: `All request form birthdate fields must be at least ${MINIMUM_CITIZEN_AGE} years old.`,
+        };
+      }
+    }
+
+    if (isAgeRequestField(fieldName)) {
+      const numericAge = Number(fieldValue);
+
+      if (Number.isNaN(numericAge) || numericAge < MINIMUM_CITIZEN_AGE) {
+        return {
+          isValid: false,
+          message: `All request form age fields must be at least ${MINIMUM_CITIZEN_AGE}.`,
+        };
+      }
+    }
+  }
+
+  return { isValid: true };
 };
 
 const createNotification = async (userId, requestId, title, message) => {
@@ -158,7 +470,7 @@ const getCitizenName = async (userId) => {
 
 const getCitizenProfile = async (userId) => {
   const rows = await query(
-    `SELECT verification_status
+    `SELECT verification_status, date_of_birth
      FROM citizen_profiles
      WHERE user_id = ?
      LIMIT 1`,
@@ -181,13 +493,15 @@ const getDocumentType = async (documentTypeId) => {
 };
 
 const calculateFees = (documentType, fallbackValues = {}) => {
-  const fallbackDocumentFee = toNumber(
-    fallbackValues.document_fee || fallbackValues.amount_due || 0
+  const rawDocumentFee = getFirstNonEmpty(
+    documentType?.fee,
+    fallbackValues.document_fee,
+    0
   );
 
-  const documentFee = toNumber(documentType?.fee, fallbackDocumentFee);
-  const systemFee = documentFee > 0 ? 10 : 0;
-  const discountAmount = 0;
+  const documentFee = toNumber(rawDocumentFee, 0);
+  const systemFee = SYSTEM_FEE_AMOUNT;
+  const discountAmount = toNumber(fallbackValues.discount_amount, 0);
   const totalAmount = Math.max(documentFee + systemFee - discountAmount, 0);
 
   return {
@@ -286,7 +600,9 @@ exports.createRequest = async (req, res) => {
       payment_reference,
       amount_due,
       document_fee,
+      system_fee,
       total_amount,
+      discount_amount,
     } = req.body;
 
     if (!document_type_id) {
@@ -301,6 +617,25 @@ exports.createRequest = async (req, res) => {
       return res.status(403).json({
         message:
           "Please complete your citizen profile before requesting documents.",
+      });
+    }
+
+    const citizenBirthDate = normalizeDateOnly(citizenProfile.date_of_birth);
+
+    if (
+      !citizenBirthDate ||
+      !isAtLeastAge(citizenBirthDate, MINIMUM_CITIZEN_AGE)
+    ) {
+      await query(
+        `UPDATE citizen_profiles
+         SET verification_status = 'Not Verified'
+         WHERE user_id = ?`,
+        [userId]
+      );
+
+      return res.status(403).json({
+        message:
+          "Only citizens who are at least 18 years old can request documents.",
       });
     }
 
@@ -321,6 +656,16 @@ exports.createRequest = async (req, res) => {
 
     const parsedNotes = safeJsonParse(notes);
 
+    const requestFormAgeValidation = validateRequestFormAgeFields(parsedNotes);
+
+    if (!requestFormAgeValidation.isValid) {
+      return res.status(400).json({
+        message: requestFormAgeValidation.message,
+      });
+    }
+
+    const personNamedInfo = extractPersonNamedInfo(parsedNotes);
+
     const requirementFile = getFirstUploadedFile(req, "file");
     const paymentProofFile = getFirstUploadedFile(req, "payment_proof");
 
@@ -340,9 +685,18 @@ exports.createRequest = async (req, res) => {
     }
 
     const feeDetails = calculateFees(documentType, {
-      amount_due,
-      document_fee: document_fee || parsedNotes.document_fee,
-      total_amount: total_amount || parsedNotes.total_amount,
+      document_fee:
+        getFirstNonEmpty(document_fee, parsedNotes.document_fee) || 0,
+      system_fee:
+        getFirstNonEmpty(system_fee, parsedNotes.system_fee) ||
+        SYSTEM_FEE_AMOUNT,
+      total_amount:
+        getFirstNonEmpty(total_amount, parsedNotes.total_amount, amount_due) ||
+        0,
+      amount_due:
+        getFirstNonEmpty(amount_due, parsedNotes.amount_due, total_amount) || 0,
+      discount_amount:
+        getFirstNonEmpty(discount_amount, parsedNotes.discount_amount) || 0,
     });
 
     const transactionNumber =
@@ -361,12 +715,17 @@ exports.createRequest = async (req, res) => {
       official_receipt_status: "Not yet generated",
       payment_status_note:
         "Payment is subject to admin or superadmin verification.",
-      backend_fee_source: "document_types",
+      backend_fee_source: "document_types_plus_required_system_fee",
+      business_rule:
+        "System fee is required for every request, even when the document fee is free.",
       document_fee: feeDetails.documentFee,
       system_fee: feeDetails.systemFee,
       discount_amount: feeDetails.discountAmount,
       total_amount: feeDetails.totalAmount,
       amount_due: feeDetails.amountDue,
+      person_named_in_document: personNamedInfo.primary,
+      person_named_rows: personNamedInfo.rows,
+      request_subject_name: personNamedInfo.primary,
     };
 
     const insertRequestSql = `
@@ -431,17 +790,19 @@ exports.createRequest = async (req, res) => {
       parsedNotes.parent_document ||
       "a document request";
 
+    const subjectName = personNamedInfo.primary || citizenName;
+
     await createNotification(
       userId,
       requestId,
       "Request Submitted",
-      "Your document request has been submitted and is now pending review."
+      `Your document request for ${subjectName} has been submitted and is now pending review.`
     );
 
     await notifyAdmins(
       requestId,
       "New Document Request",
-      `${citizenName} submitted ${documentName} for review.`
+      `${citizenName} submitted ${documentName} for ${subjectName}.`
     );
 
     return res.status(201).json({
@@ -455,6 +816,8 @@ exports.createRequest = async (req, res) => {
       system_fee: feeDetails.systemFee,
       discount_amount: feeDetails.discountAmount,
       total_amount: feeDetails.totalAmount,
+      person_named_in_document: personNamedInfo.primary,
+      person_named_rows: personNamedInfo.rows,
     });
   } catch (err) {
     console.error("CREATE REQUEST ERROR:", err);
@@ -512,6 +875,11 @@ exports.getMyRequests = async (req, res) => {
         ...request,
         document_name: documentName,
         form_data: formData,
+        person_named_in_document:
+          formData.person_named_in_document ||
+          formData.request_subject_name ||
+          null,
+        person_named_rows: formData.person_named_rows || [],
       };
     });
 
@@ -591,6 +959,13 @@ exports.getRequestById = async (req, res) => {
         "Document Request";
     }
 
+    request.person_named_in_document =
+      request.form_data.person_named_in_document ||
+      request.form_data.request_subject_name ||
+      null;
+
+    request.person_named_rows = request.form_data.person_named_rows || [];
+
     return res.status(200).json({
       request,
     });
@@ -648,6 +1023,11 @@ exports.getAllRequests = async (req, res) => {
           formData.document_name ||
           formData.parent_document ||
           "Document Request",
+        person_named_in_document:
+          formData.person_named_in_document ||
+          formData.request_subject_name ||
+          null,
+        person_named_rows: formData.person_named_rows || [],
       };
     });
 
@@ -714,6 +1094,20 @@ exports.updateRequest = async (req, res) => {
       },
       citizen_updated_at: new Date().toISOString(),
     };
+
+    const requestFormAgeValidation = validateRequestFormAgeFields(mergedFormData);
+
+    if (!requestFormAgeValidation.isValid) {
+      return res.status(400).json({
+        message: requestFormAgeValidation.message,
+      });
+    }
+
+    const personNamedInfo = extractPersonNamedInfo(mergedFormData);
+
+    mergedFormData.person_named_in_document = personNamedInfo.primary;
+    mergedFormData.person_named_rows = personNamedInfo.rows;
+    mergedFormData.request_subject_name = personNamedInfo.primary;
 
     if (req.body.document_name) {
       mergedFormData.document_name = req.body.document_name;
@@ -809,14 +1203,16 @@ exports.updateRequest = async (req, res) => {
       mergedFormData.parent_document ||
       "a document request";
 
+    const subjectName = personNamedInfo.primary || citizenName;
+
     await notifyAdmins(
       id,
       wasNeedsMoreInfo
         ? "Request Resubmitted by Citizen"
         : "Request Edited by Citizen",
       wasNeedsMoreInfo
-        ? `${citizenName} resubmitted ${documentName} request #${id}. Status is now Pending.`
-        : `${citizenName} updated ${documentName} request #${id}.`
+        ? `${citizenName} resubmitted ${documentName} for ${subjectName}. Status is now Pending.`
+        : `${citizenName} updated ${documentName} for ${subjectName}.`
     );
 
     return res.status(200).json({
@@ -830,6 +1226,8 @@ exports.updateRequest = async (req, res) => {
         form_data: mergedFormData,
         payment_method: finalPaymentMethod,
         requirement_file_path: newFilePath,
+        person_named_in_document: personNamedInfo.primary,
+        person_named_rows: personNamedInfo.rows,
       },
     });
   } catch (err) {
@@ -916,6 +1314,11 @@ exports.updateStatus = async (req, res) => {
       formData.parent_document ||
       "a document request";
 
+    const subjectName =
+      formData.person_named_in_document ||
+      formData.request_subject_name ||
+      citizenName;
+
     await createNotification(
       request.user_id,
       id,
@@ -926,7 +1329,7 @@ exports.updateStatus = async (req, res) => {
     await notifyAdmins(
       id,
       "Request Status Updated",
-      `${citizenName}'s ${documentName} status was updated to ${status}.`
+      `${citizenName}'s ${documentName} for ${subjectName} was updated to ${status}.`
     );
 
     return res.json({
@@ -953,6 +1356,7 @@ exports.updatePayment = async (req, res) => {
       document_fee,
       amount_due,
       total_amount,
+      discount_amount,
     } = req.body;
 
     const validPaymentStatuses = ["Unpaid", "Paid", "Waived"];
@@ -993,9 +1397,12 @@ exports.updatePayment = async (req, res) => {
         fee: request.document_type_fee,
       },
       {
-        document_fee: document_fee || request.document_fee,
-        amount_due: amount_due || request.amount_due,
-        total_amount: total_amount || request.total_amount,
+        document_fee:
+          getFirstNonEmpty(document_fee, request.document_fee) || 0,
+        amount_due: getFirstNonEmpty(amount_due, request.amount_due) || 0,
+        total_amount: getFirstNonEmpty(total_amount, request.total_amount) || 0,
+        discount_amount:
+          getFirstNonEmpty(discount_amount, request.discount_amount) || 0,
       }
     );
 
@@ -1075,6 +1482,11 @@ exports.updatePayment = async (req, res) => {
       formData.parent_document ||
       "a document request";
 
+    const subjectName =
+      formData.person_named_in_document ||
+      formData.request_subject_name ||
+      citizenName;
+
     await createNotification(
       request.user_id,
       id,
@@ -1089,7 +1501,7 @@ exports.updatePayment = async (req, res) => {
     await notifyAdmins(
       id,
       "Payment Status Updated",
-      `${citizenName}'s payment for ${documentName} is now ${payment_status}.`
+      `${citizenName}'s payment for ${documentName} under ${subjectName} is now ${payment_status}.`
     );
 
     return res.json({
@@ -1155,6 +1567,11 @@ exports.setPickupAppointment = async (req, res) => {
       formData.parent_document ||
       "a document request";
 
+    const subjectName =
+      formData.person_named_in_document ||
+      formData.request_subject_name ||
+      citizenName;
+
     await query(
       `UPDATE requests
        SET pickup_date = ?, pickup_time = ?, status = 'Ready for Pickup'
@@ -1196,7 +1613,7 @@ exports.setPickupAppointment = async (req, res) => {
     await notifyAdmins(
       id,
       "Pickup Schedule Set",
-      `${citizenName}'s ${documentName} pickup was scheduled on ${pickup_date} at ${pickup_time}.`
+      `${citizenName}'s ${documentName} under ${subjectName} pickup was scheduled on ${pickup_date} at ${pickup_time}.`
     );
 
     return res.json({
@@ -1239,6 +1656,10 @@ exports.getMyAppointments = async (req, res) => {
           formData.document_name ||
           formData.parent_document ||
           "Document Request",
+        person_named_in_document:
+          formData.person_named_in_document ||
+          formData.request_subject_name ||
+          null,
       };
     });
 
@@ -1281,6 +1702,10 @@ exports.getAllAppointments = async (req, res) => {
           formData.document_name ||
           formData.parent_document ||
           "Document Request",
+        person_named_in_document:
+          formData.person_named_in_document ||
+          formData.request_subject_name ||
+          null,
       };
     });
 
@@ -1343,6 +1768,11 @@ exports.uploadFile = async (req, res) => {
       formData.parent_document ||
       "a document request";
 
+    const subjectName =
+      formData.person_named_in_document ||
+      formData.request_subject_name ||
+      citizenName;
+
     await createNotification(
       request.user_id,
       id,
@@ -1353,7 +1783,7 @@ exports.uploadFile = async (req, res) => {
     await notifyAdmins(
       id,
       "Document File Uploaded",
-      `A file was uploaded for ${citizenName}'s ${documentName}.`
+      `A file was uploaded for ${citizenName}'s ${documentName} under ${subjectName}.`
     );
 
     return res.json({

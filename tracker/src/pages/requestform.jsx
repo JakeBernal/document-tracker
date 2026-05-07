@@ -22,21 +22,145 @@ export default function RequestForm() {
   const [zoomImage, setZoomImage] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState("");
 
+  const MINIMUM_REQUEST_AGE = 18;
+
+  const getMinimumBirthDate = () => {
+    const today = new Date();
+    const minimumDate = new Date(
+      today.getFullYear() - MINIMUM_REQUEST_AGE,
+      today.getMonth(),
+      today.getDate()
+    );
+
+    return minimumDate.toISOString().split("T")[0];
+  };
+
+  const getAgeFromDate = (dateValue) => {
+    if (!dateValue) return null;
+
+    const birthDate = new Date(`${dateValue}T00:00:00`);
+
+    if (Number.isNaN(birthDate.getTime())) {
+      return null;
+    }
+
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const birthdayHasPassed =
+      today.getMonth() > birthDate.getMonth() ||
+      (today.getMonth() === birthDate.getMonth() &&
+        today.getDate() >= birthDate.getDate());
+
+    if (!birthdayHasPassed) {
+      age -= 1;
+    }
+
+    return age;
+  };
+
+  const isAtLeastRequestAge = (dateValue) => {
+    const age = getAgeFromDate(dateValue);
+
+    return age !== null && age >= MINIMUM_REQUEST_AGE;
+  };
+
+  const normalizeFieldText = (value) => {
+    return String(value || "")
+      .toLowerCase()
+      .replaceAll("_", " ")
+      .trim();
+  };
+
+  const isBirthDateField = (field) => {
+    const fieldName = normalizeFieldText(field.name);
+    const fieldLabel = normalizeFieldText(field.label);
+    const combinedText = `${fieldName} ${fieldLabel}`;
+
+    return (
+      field.type === "date" &&
+      (combinedText.includes("birth") || combinedText.includes("date of birth"))
+    );
+  };
+
+  const isAgeField = (field) => {
+    const fieldName = normalizeFieldText(field.name);
+    const fieldLabel = normalizeFieldText(field.label);
+
+    return field.type === "number" && (fieldName === "age" || fieldLabel === "age");
+  };
+
+  const minimumBirthDate = getMinimumBirthDate();
+
+  const [profileGuard, setProfileGuard] = useState({
+    loading: true,
+    allowed: false,
+    message: "Checking profile verification...",
+  });
+
   useEffect(() => {
-    const storedUserRaw = localStorage.getItem("user");
+    const checkUserAndProfile = async () => {
+      const storedUserRaw = localStorage.getItem("user");
+      const token = localStorage.getItem("token");
 
-    if (!storedUserRaw) {
-      navigate("/signin");
-      return;
-    }
+      if (!storedUserRaw || !token) {
+        navigate("/signin");
+        return;
+      }
 
-    try {
-      setUser(JSON.parse(storedUserRaw));
-    } catch (error) {
-      localStorage.removeItem("user");
-      localStorage.removeItem("token");
-      navigate("/signin");
-    }
+      try {
+        const storedUser = JSON.parse(storedUserRaw);
+        setUser(storedUser);
+
+        if (storedUser.role !== "citizen") {
+          setProfileGuard({ loading: false, allowed: true, message: "" });
+          return;
+        }
+
+        const res = await fetch("http://localhost:5001/api/profile", {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          setProfileGuard({
+            loading: false,
+            allowed: false,
+            message:
+              data.message ||
+              "Your profile verification could not be checked. Please complete your profile first.",
+          });
+          return;
+        }
+
+        const citizenProfile = data.profile || {};
+        const isFullyVerified =
+          citizenProfile.verification_status === "Fully Verified" &&
+          citizenProfile.age_eligible === true;
+
+        if (!isFullyVerified) {
+          setProfileGuard({
+            loading: false,
+            allowed: false,
+            message:
+              "Your account must be Fully Verified and at least 18 years old before requesting any document.",
+          });
+          return;
+        }
+
+        setProfileGuard({ loading: false, allowed: true, message: "" });
+      } catch (error) {
+        console.error("PROFILE CHECK ERROR:", error);
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+        navigate("/signin");
+      }
+    };
+
+    checkUserAndProfile();
   }, [navigate]);
 
   const selectedDoc = useMemo(() => {
@@ -128,6 +252,14 @@ export default function RequestForm() {
       if (field.required && (!value || String(value).trim() === "")) {
         return `Please fill in ${field.label}.`;
       }
+
+      if (value && isBirthDateField(field) && !isAtLeastRequestAge(value)) {
+        return `${field.label} must show that the person is at least ${MINIMUM_REQUEST_AGE} years old.`;
+      }
+
+      if (value && isAgeField(field) && Number(value) < MINIMUM_REQUEST_AGE) {
+        return `${field.label} must be at least ${MINIMUM_REQUEST_AGE}.`;
+      }
     }
 
     if (!file) {
@@ -155,6 +287,13 @@ export default function RequestForm() {
 
     if (!user) {
       navigate("/signin");
+      return;
+    }
+
+    if (!isAdmin && !profileGuard.allowed) {
+      setMessage(
+        "Your account must be Fully Verified and at least 18 years old before requesting any document."
+      );
       return;
     }
 
@@ -197,6 +336,54 @@ export default function RequestForm() {
       state: checkoutData,
     });
   };
+
+  if (profileGuard.loading) {
+    return (
+      <>
+        <Navbar />
+
+        <section className="request-page">
+          <div className="request-guard-card">
+            <div className="request-guard-icon">⏳</div>
+            <h1>Checking Verification</h1>
+            <p>Please wait while the system checks your citizen profile status.</p>
+          </div>
+        </section>
+      </>
+    );
+  }
+
+  if (!profileGuard.allowed) {
+    return (
+      <>
+        <Navbar />
+
+        <section className="request-page">
+          <div className="request-guard-card blocked">
+            <div className="request-guard-icon">🔒</div>
+            <h1>Request Not Allowed</h1>
+            <p>{profileGuard.message}</p>
+            <div className="request-guard-actions">
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => navigate("/profile")}
+              >
+                Complete Profile Verification
+              </button>
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => navigate("/citizen")}
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
+        </section>
+      </>
+    );
+  }
 
   return (
     <>
@@ -318,7 +505,21 @@ export default function RequestForm() {
                     value={formData[field.name] || ""}
                     onChange={handleChange}
                     placeholder={field.placeholder || ""}
+                    max={isBirthDateField(field) ? minimumBirthDate : undefined}
+                    min={isAgeField(field) ? MINIMUM_REQUEST_AGE : undefined}
                   />
+
+                  {isBirthDateField(field) && (
+                    <p className="request-age-note">
+                      Minimum age required: {MINIMUM_REQUEST_AGE} years old.
+                    </p>
+                  )}
+
+                  {isAgeField(field) && (
+                    <p className="request-age-note">
+                      Age must be {MINIMUM_REQUEST_AGE} or above.
+                    </p>
+                  )}
                 </div>
               ))}
 

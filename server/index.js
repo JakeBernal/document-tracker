@@ -12,11 +12,18 @@ const crypto = require("crypto");
 
 const db = require("./config/db");
 const requestRoutes = require("./routes/requestRoutes");
+const profileRoutes = require("./routes/profileRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const receiptRoutes = require("./routes/receiptRoutes");
 const reportRoutes = require("./routes/reportRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const superadminRoutes = require("./routes/superadminRoutes");
+const {
+  MINIMUM_CITIZEN_AGE,
+  getLatestAllowedBirthDate,
+  isAtLeastAge,
+  isValidBirthDate,
+} = require("./utils/ageValidation");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -230,10 +237,11 @@ app.post("/api/register", async (req, res) => {
   const fullName = cleanText(req.body.full_name);
   const email = cleanEmail(req.body.email);
   const password = String(req.body.password || "");
+  const dateOfBirth = cleanText(req.body.date_of_birth);
 
-  if (!fullName || !email || !password) {
+  if (!fullName || !email || !password || !dateOfBirth) {
     return res.status(400).json({
-      message: "Please fill in all fields.",
+      message: "Please fill in all fields, including date of birth.",
     });
   }
 
@@ -256,6 +264,18 @@ app.post("/api/register", async (req, res) => {
     });
   }
 
+  if (!isValidBirthDate(dateOfBirth)) {
+    return res.status(400).json({
+      message: "Please enter a valid date of birth.",
+    });
+  }
+
+  if (!isAtLeastAge(dateOfBirth, MINIMUM_CITIZEN_AGE)) {
+    return res.status(400).json({
+      message: `Only citizens who are at least ${MINIMUM_CITIZEN_AGE} years old can create an account. Latest allowed birth date: ${getLatestAllowedBirthDate(MINIMUM_CITIZEN_AGE)}.`,
+    });
+  }
+
   try {
     const hashedPassword = await bcrypt.hash(password, 12);
 
@@ -264,6 +284,13 @@ app.post("/api/register", async (req, res) => {
        (full_name, email, password, role, auth_provider)
        VALUES (?, ?, ?, ?, 'local')`,
       [fullName, email, hashedPassword, "citizen"]
+    );
+
+    await query(
+      `INSERT INTO citizen_profiles
+       (user_id, date_of_birth, verification_status)
+       VALUES (?, ?, 'Not Verified')`,
+      [result.insertId, dateOfBirth]
     );
 
     return res.status(201).json({
@@ -684,6 +711,7 @@ app.post("/api/reset-password", async (req, res) => {
 
 // ================= API ROUTES =================
 app.use("/api", requestRoutes);
+app.use("/api", profileRoutes);
 app.use("/api", notificationRoutes);
 app.use("/api", receiptRoutes);
 app.use("/api", reportRoutes);

@@ -1,8 +1,11 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../components/navbar";
 import "../css/checkout.css";
 import { documentRequirements } from "../data/documentRequirements";
+
+const API_BASE_URL = "http://localhost:5001";
+const SYSTEM_FEE_AMOUNT = 10;
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -28,6 +31,7 @@ export default function Checkout() {
     }
 
     const generatedTransactionNumber = `TXN-${Date.now()}`;
+
     sessionStorage.setItem(
       "checkoutTransactionNumber",
       generatedTransactionNumber
@@ -54,6 +58,155 @@ export default function Checkout() {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [profileGuard, setProfileGuard] = useState({
+    loading: true,
+    allowed: false,
+    message: "Checking profile verification...",
+  });
+
+  useEffect(() => {
+    const checkProfileBeforeCheckout = async () => {
+      const token = localStorage.getItem("token");
+      const storedUserRaw = localStorage.getItem("user");
+
+      if (!token || !storedUserRaw) {
+        navigate("/signin");
+        return;
+      }
+
+      try {
+        const storedUser = JSON.parse(storedUserRaw);
+
+        if (storedUser.role !== "citizen") {
+          setProfileGuard({
+            loading: false,
+            allowed: true,
+            message: "",
+          });
+          return;
+        }
+
+        const res = await fetch(`${API_BASE_URL}/api/profile`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          setProfileGuard({
+            loading: false,
+            allowed: false,
+            message:
+              data.message ||
+              "Your profile verification could not be checked. Please complete your profile first.",
+          });
+          return;
+        }
+
+        const citizenProfile = data.profile || {};
+        const isFullyVerified =
+          citizenProfile.verification_status === "Fully Verified" &&
+          citizenProfile.age_eligible === true;
+
+        if (!isFullyVerified) {
+          setProfileGuard({
+            loading: false,
+            allowed: false,
+            message:
+              "Your account must be Fully Verified and at least 18 years old before finalizing any document request.",
+          });
+          return;
+        }
+
+        setProfileGuard({
+          loading: false,
+          allowed: true,
+          message: "",
+        });
+      } catch (error) {
+        console.error("CHECKOUT PROFILE CHECK ERROR:", error);
+
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+        navigate("/signin");
+      }
+    };
+
+    checkProfileBeforeCheckout();
+  }, [navigate]);
+
+  const showMessage = (text, type = "error") => {
+    setMessage(text);
+    setMessageType(type);
+  };
+
+  const cleanMoneySource = (value) => {
+    if (value === undefined || value === null || value === "") {
+      return "0";
+    }
+
+    return String(value)
+      .replace("₱", "")
+      .replace(",", "")
+      .trim();
+  };
+
+  const getDocumentFeeInfo = () => {
+    const rawFee =
+      selectedDoc?.fee ??
+      checkoutData?.document_fee ??
+      checkoutData?.documentFee ??
+      checkoutData?.amountDue ??
+      "0";
+
+    const cleanedFee = cleanMoneySource(rawFee);
+    const loweredFee = cleanedFee.toLowerCase();
+
+    if (loweredFee === "free") {
+      return {
+        type: "fixed",
+        amount: 0,
+        display: "₱0.00",
+        databaseValue: "0.00",
+      };
+    }
+
+    if (loweredFee === "varies") {
+      return {
+        type: "varies",
+        amount: 0,
+        display: "Varies",
+        databaseValue: "0.00",
+      };
+    }
+
+    const numericFee = Number(cleanedFee);
+
+    if (Number.isNaN(numericFee)) {
+      return {
+        type: "fixed",
+        amount: 0,
+        display: "₱0.00",
+        databaseValue: "0.00",
+      };
+    }
+
+    return {
+      type: "fixed",
+      amount: numericFee,
+      display: `₱${numericFee.toFixed(2)}`,
+      databaseValue: numericFee.toFixed(2),
+    };
+  };
+
+  const formatMoney = (value) => {
+    const numericValue = Number(value || 0);
+    return numericValue.toFixed(2);
+  };
 
   if (!checkoutData || !selectedDoc) {
     return (
@@ -89,6 +242,56 @@ export default function Checkout() {
     );
   }
 
+  if (profileGuard.loading) {
+    return (
+      <>
+        <Navbar />
+
+        <section className="checkout-page">
+          <div className="checkout-guard-card">
+            <div className="checkout-guard-icon">⏳</div>
+            <h1>Checking Verification</h1>
+            <p>Please wait while the system checks your citizen profile status.</p>
+          </div>
+        </section>
+      </>
+    );
+  }
+
+  if (!profileGuard.allowed) {
+    return (
+      <>
+        <Navbar />
+
+        <section className="checkout-page">
+          <div className="checkout-guard-card blocked">
+            <div className="checkout-guard-icon">🔒</div>
+            <h1>Checkout Not Allowed</h1>
+            <p>{profileGuard.message}</p>
+
+            <div className="checkout-guard-actions">
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => navigate("/profile")}
+              >
+                Complete Profile Verification
+              </button>
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => navigate("/citizen")}
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
+        </section>
+      </>
+    );
+  }
+
   const paymentMethod = checkoutData.paymentMethod || "Onsite Payment";
 
   const isOnlinePayment =
@@ -97,26 +300,22 @@ export default function Checkout() {
   const documentFile = checkoutData.file || null;
   const documentFileName = checkoutData.fileName || "No file selected";
 
-  const rawDocumentFee =
-    checkoutData.amountDue ||
-    (selectedDoc.fee === "Free"
-      ? "0.00"
-      : selectedDoc.fee === "Varies"
-      ? "Varies"
-      : String(selectedDoc.fee || "0.00").replace("₱", "").trim());
+  const documentFeeInfo = getDocumentFeeInfo();
+  const documentFee = documentFeeInfo.databaseValue;
+  const documentFeeDisplay = documentFeeInfo.display;
 
-  const documentFee =
-    rawDocumentFee === "Varies"
-      ? "Varies"
-      : Number(rawDocumentFee || 0).toFixed(2);
-
-  const systemFee =
-    documentFee === "0.00" || documentFee === "Varies" ? "0.00" : "10.00";
-
+  const systemFee = formatMoney(SYSTEM_FEE_AMOUNT);
   const totalAmount =
-    documentFee === "Varies"
-      ? "Varies"
-      : (Number(documentFee) + Number(systemFee)).toFixed(2);
+    documentFeeInfo.type === "varies"
+      ? SYSTEM_FEE_AMOUNT
+      : documentFeeInfo.amount + SYSTEM_FEE_AMOUNT;
+
+  const totalAmountForDatabase = formatMoney(totalAmount);
+
+  const totalAmountDisplay =
+    documentFeeInfo.type === "varies"
+      ? `Varies + ₱${systemFee} system fee`
+      : `₱${totalAmountForDatabase}`;
 
   const paymentAccount = (() => {
     const category = selectedDoc.category || checkoutData.category;
@@ -168,6 +367,12 @@ export default function Checkout() {
     return "Other";
   })();
 
+  const handlePaymentReferenceChange = (e) => {
+    setPaymentReference(e.target.value);
+    setMessage("");
+    setMessageType("");
+  };
+
   const handlePaymentProofChange = (e) => {
     const selectedFile = e.target.files[0];
 
@@ -194,8 +399,10 @@ export default function Checkout() {
       setPaymentProofName("");
       e.target.value = "";
 
-      setMessage("Invalid payment proof. Please upload JPG, PNG, WEBP, or PDF.");
-      setMessageType("error");
+      showMessage(
+        "Invalid payment proof. Please upload JPG, PNG, WEBP, or PDF.",
+        "error"
+      );
       return;
     }
 
@@ -204,8 +411,7 @@ export default function Checkout() {
       setPaymentProofName("");
       e.target.value = "";
 
-      setMessage("Payment proof is too large. Maximum file size is 5 MB.");
-      setMessageType("error");
+      showMessage("Payment proof is too large. Maximum file size is 5 MB.", "error");
       return;
     }
 
@@ -233,12 +439,19 @@ export default function Checkout() {
             .replaceAll("_", " ")
             .replace(/\b\w/g, (char) => char.toUpperCase())}
         </span>
-        <span className="checkout-value">{value || "—"} </span>
+
+        <span className="checkout-value">
+          {value || "—"}
+        </span>
       </div>
     ));
   };
 
   const validateCheckout = () => {
+    if (!profileGuard.allowed) {
+      return "Your account must be Fully Verified and at least 18 years old before finalizing any document request.";
+    }
+
     if (!documentFile) {
       return "The uploaded requirement file was not detected. Please go back and upload the required document again.";
     }
@@ -262,8 +475,7 @@ export default function Checkout() {
     const validationError = validateCheckout();
 
     if (validationError) {
-      setMessage(validationError);
-      setMessageType("error");
+      showMessage(validationError, "error");
       return;
     }
 
@@ -287,7 +499,11 @@ export default function Checkout() {
         "payment_reference",
         isOnlinePayment ? paymentReference.trim() : ""
       );
-      requestData.append("amount_due", totalAmount === "Varies" ? "0" : totalAmount);
+
+      requestData.append("document_fee", documentFee);
+      requestData.append("system_fee", systemFee);
+      requestData.append("total_amount", totalAmountForDatabase);
+      requestData.append("amount_due", totalAmountForDatabase);
 
       requestData.append(
         "notes",
@@ -304,12 +520,17 @@ export default function Checkout() {
             ? paymentReference.trim()
             : null,
           document_fee: documentFee,
+          document_fee_display: documentFeeDisplay,
           system_fee: systemFee,
-          total_amount: totalAmount,
+          total_amount: totalAmountForDatabase,
+          total_amount_display: totalAmountDisplay,
+          amount_due: totalAmountForDatabase,
           payment_account_name: paymentAccount.name,
           payment_account_number: paymentAccount.number,
           uploaded_requirement_file: documentFileName,
           payment_proof_file: paymentProofName || null,
+          business_rule:
+            "System fee is required for every request, even when the document fee is free.",
           payment_status_note: isOnlinePayment
             ? "Payment proof submitted. Payment is pending admin verification."
             : "Payment will be completed onsite and confirmed by barangay staff.",
@@ -325,7 +546,7 @@ export default function Checkout() {
         requestData.append("payment_proof", paymentProof);
       }
 
-      const res = await fetch("http://localhost:5001/api/requests", {
+      const res = await fetch(`${API_BASE_URL}/api/requests`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -336,8 +557,7 @@ export default function Checkout() {
       const data = await res.json();
 
       if (!res.ok) {
-        setMessage(data.message || "Failed to submit request.");
-        setMessageType("error");
+        showMessage(data.message || "Failed to submit request.", "error");
         return;
       }
 
@@ -345,16 +565,17 @@ export default function Checkout() {
       sessionStorage.removeItem("checkoutTransactionNumber");
       localStorage.removeItem("paymentData");
 
-      setMessage("Request submitted successfully! Payment is pending verification.");
-      setMessageType("success");
+      showMessage(
+        "Request submitted successfully! Payment is pending verification.",
+        "success"
+      );
 
       setTimeout(() => {
         navigate("/citizen");
       }, 900);
     } catch (error) {
       console.error("CHECKOUT SUBMIT ERROR:", error);
-      setMessage("Cannot connect to server. Please check your backend.");
-      setMessageType("error");
+      showMessage("Cannot connect to server. Please check your backend.", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -428,14 +649,19 @@ export default function Checkout() {
 
               <div className="amount-box">
                 <p>Document Fee</p>
-                <h3>{documentFee === "Varies" ? "Varies" : `₱${documentFee}`}</h3>
+                <h3>{documentFeeDisplay}</h3>
 
                 <p className="amount-label-gap">System Fee</p>
                 <h3>₱{systemFee}</h3>
 
                 <p className="amount-label-gap">Total Amount to Pay</p>
-                <h3>{totalAmount === "Varies" ? "Varies" : `₱${totalAmount}`}</h3>
+                <h3>{totalAmountDisplay}</h3>
               </div>
+
+              <p className="payment-note">
+                System fee is required for every request, even when the document
+                fee is free.
+              </p>
 
               {isOnlinePayment ? (
                 <div className="payment-instructions">
@@ -443,11 +669,14 @@ export default function Checkout() {
                     <strong>{paymentMethod} Account Name:</strong>{" "}
                     {paymentAccount.name}
                   </p>
+
                   <p>
                     <strong>{paymentMethod} Number:</strong>{" "}
                     {paymentAccount.number}
                   </p>
+
                   <p>{paymentAccount.note}</p>
+
                   <p className="payment-note">
                     After paying, upload a screenshot or receipt for admin
                     verification.
@@ -458,7 +687,9 @@ export default function Checkout() {
                   <p>
                     <strong>Payment Location:</strong> {paymentAccount.name}
                   </p>
+
                   <p>{paymentAccount.note}</p>
+
                   <p className="payment-note">
                     Bring valid ID and prepare the exact amount when paying
                     onsite.
@@ -477,7 +708,7 @@ export default function Checkout() {
                     <input
                       type="text"
                       value={paymentReference}
-                      onChange={(e) => setPaymentReference(e.target.value)}
+                      onChange={handlePaymentReferenceChange}
                       placeholder="Enter transaction reference number"
                     />
                   </div>
@@ -530,8 +761,7 @@ export default function Checkout() {
               )}
 
               <p>
-                <strong>Document Fee:</strong>{" "}
-                {documentFee === "Varies" ? "Varies" : `₱${documentFee}`}
+                <strong>Document Fee:</strong> {documentFeeDisplay}
               </p>
 
               <p>
@@ -539,8 +769,7 @@ export default function Checkout() {
               </p>
 
               <p>
-                <strong>Total Amount:</strong>{" "}
-                {totalAmount === "Varies" ? "Varies" : `₱${totalAmount}`}
+                <strong>Total Amount:</strong> {totalAmountDisplay}
               </p>
 
               <p>

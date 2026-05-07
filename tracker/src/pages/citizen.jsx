@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../components/navbar";
 import "../css/citizen.css";
 
+const API_BASE_URL = "http://localhost:5001";
+
 export default function UserDashboard() {
   const navigate = useNavigate();
 
@@ -41,7 +43,7 @@ export default function UserDashboard() {
         return;
       }
 
-      const res = await fetch("http://localhost:5001/api/requests/my", {
+      const res = await fetch(`${API_BASE_URL}/api/requests/my`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -144,6 +146,18 @@ export default function UserDashboard() {
     );
   };
 
+  const getPersonNamedInDocument = (request) => {
+    const parsed = parseFormData(request);
+
+    return (
+      request.person_named_in_document ||
+      request.request_subject_name ||
+      parsed.person_named_in_document ||
+      parsed.request_subject_name ||
+      null
+    );
+  };
+
   const getApplicantSummary = (request) => {
     const parsed = parseFormData(request);
     const fields = parsed.fields || parsed.applicant || {};
@@ -168,6 +182,8 @@ export default function UserDashboard() {
       "amount_due",
       "created_at",
       "citizen_updated_at",
+      "uploaded_requirement_file",
+      "payment_proof_file",
     ];
 
     return Object.entries(fields).filter(
@@ -249,11 +265,12 @@ export default function UserDashboard() {
     if (cleanPath.startsWith("http")) return cleanPath;
 
     const uploadsIndex = cleanPath.indexOf("uploads/");
+
     if (uploadsIndex !== -1) {
       cleanPath = cleanPath.substring(uploadsIndex);
     }
 
-    return `http://localhost:5001/${cleanPath}`;
+    return `${API_BASE_URL}/${cleanPath}`;
   };
 
   const getPaymentProofUrl = (request) => {
@@ -287,6 +304,33 @@ export default function UserDashboard() {
 
   const getDisplayAmount = (request) => {
     return request.total_amount || request.amount_due || 0;
+  };
+
+  const canViewReceipt = (request) => {
+    const paymentStatus = request.payment_status || "Unpaid";
+
+    return (
+      ["Paid", "Waived"].includes(paymentStatus) &&
+      Boolean(request.receipt_number)
+    );
+  };
+
+  const getReceiptMessage = (request) => {
+    const paymentStatus = request.payment_status || "Unpaid";
+
+    if (canViewReceipt(request)) {
+      return "";
+    }
+
+    if (paymentStatus === "Unpaid") {
+      return "Receipt unavailable. Payment is still pending verification.";
+    }
+
+    if (["Paid", "Waived"].includes(paymentStatus) && !request.receipt_number) {
+      return "Receipt is being prepared by the system.";
+    }
+
+    return "Receipt unavailable.";
   };
 
   const submitFeedback = async (request) => {
@@ -324,7 +368,7 @@ export default function UserDashboard() {
       const token = localStorage.getItem("token");
 
       const res = await fetch(
-        `http://localhost:5001/api/requests/${request.id}/feedback`,
+        `${API_BASE_URL}/api/requests/${request.id}/feedback`,
         {
           method: "POST",
           headers: {
@@ -568,11 +612,20 @@ export default function UserDashboard() {
                       const releasedDocumentUrl =
                         getReleasedDocumentUrl(request);
                       const applicantDetails = getApplicantSummary(request);
+                      const personNamedInDocument =
+                        getPersonNamedInDocument(request);
+                      const receiptMessage = getReceiptMessage(request);
 
                       return (
                         <tr key={request.id}>
                           <td>
                             <strong>{getDocumentName(request)}</strong>
+
+                            {personNamedInDocument && (
+                              <p className="request-note">
+                                For: {personNamedInDocument}
+                              </p>
+                            )}
 
                             {request.receipt_number && (
                               <p className="request-note">
@@ -590,6 +643,7 @@ export default function UserDashboard() {
                                       <span>
                                         {key
                                           .replaceAll("_", " ")
+                                          .replaceAll("-", " ")
                                           .replace(/\b\w/g, (char) =>
                                             char.toUpperCase()
                                           )}
@@ -723,15 +777,21 @@ export default function UserDashboard() {
                               </p>
                             )}
 
-                            <button
-                              type="button"
-                              className="view-file-link receipt-link-btn"
-                              onClick={() =>
-                                navigate(`/receipt/${request.id}`)
-                              }
-                            >
-                              View Receipt
-                            </button>
+                            {canViewReceipt(request) ? (
+                              <button
+                                type="button"
+                                className="view-file-link receipt-link-btn"
+                                onClick={() =>
+                                  navigate(`/receipt/${request.id}`)
+                                }
+                              >
+                                View Receipt
+                              </button>
+                            ) : (
+                              <p className="receipt-pending-text">
+                                {receiptMessage}
+                              </p>
+                            )}
 
                             {request.status === "Completed" && (
                               <button

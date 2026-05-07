@@ -15,6 +15,7 @@ export default function Navbar() {
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
+    const token = localStorage.getItem("token");
 
     if (!storedUser) {
       setUser(null);
@@ -25,17 +26,21 @@ export default function Navbar() {
       const parsedUser = JSON.parse(storedUser);
       setUser(parsedUser);
 
-      if (parsedUser.role === "citizen") {
-        const savedProfileRaw = localStorage.getItem(
-          `citizen_profile_${parsedUser.id}`
-        );
-
-        if (savedProfileRaw) {
-          const savedProfile = JSON.parse(savedProfileRaw);
-          setVerificationStatus(
-            savedProfile.verification_status || "Not Verified"
-          );
-        }
+      if (parsedUser.role === "citizen" && token) {
+        fetch("http://localhost:5001/api/profile", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            setVerificationStatus(
+              data?.profile?.verification_status || "Not Verified"
+            );
+          })
+          .catch(() => {
+            setVerificationStatus("Not Verified");
+          });
       }
     } catch (error) {
       localStorage.removeItem("user");
@@ -195,6 +200,9 @@ export default function Navbar() {
                       <p className="user-name">{user.full_name}</p>
                       <small className="user-email">{user.email}</small>
                       <span className="role-badge">{displayRole}</span>
+                      {isCitizen && (
+                        <span className="role-badge">{verificationStatus}</span>
+                      )}
                     </div>
                   </div>
 

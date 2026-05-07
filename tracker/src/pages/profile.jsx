@@ -3,6 +3,30 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../components/navbar";
 import "../css/profile.css";
 
+const API_BASE_URL = "http://localhost:5001";
+
+const emptyProfile = {
+  date_of_birth: "",
+  gender: "",
+  civil_status: "",
+  mobile_number: "",
+  province: "",
+  city_municipality: "",
+  barangay: "",
+  street_purok_sitio: "",
+  house_number: "",
+  complete_address: "",
+  occupation_type: "",
+  school_company_name: "",
+  valid_id_type: "",
+  valid_id_number: "",
+  valid_id_path: "",
+  valid_id_file_name: "",
+  emergency_contact_name: "",
+  emergency_contact_number: "",
+  verification_status: "Not Verified",
+};
+
 export default function Profile() {
   const navigate = useNavigate();
 
@@ -18,36 +42,65 @@ export default function Profile() {
   ];
 
   const [user, setUser] = useState(null);
+  const [token, setToken] = useState("");
+  const [validIdFile, setValidIdFile] = useState(null);
   const [validIdFileName, setValidIdFileName] = useState("");
-
-  const [profile, setProfile] = useState({
-    date_of_birth: "",
-    gender: "",
-    civil_status: "",
-    mobile_number: "",
-    province: "",
-    city_municipality: "",
-    barangay: "",
-    street_purok_sitio: "",
-    house_number: "",
-    complete_address: "",
-    occupation_type: "",
-    school_company_name: "",
-    valid_id_type: "",
-    valid_id_number: "",
-    valid_id_file_name: "",
-    emergency_contact_name: "",
-    emergency_contact_number: "",
-    verification_status: "Not Verified",
-  });
-
+  const [profile, setProfile] = useState(emptyProfile);
   const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("info");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const getLatestAllowedBirthDate = () => {
+    const today = new Date();
+    const date = new Date(
+      today.getFullYear() - 18,
+      today.getMonth(),
+      today.getDate()
+    );
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  };
+
+  const getAge = (dateOfBirth) => {
+    if (!dateOfBirth) return null;
+
+    const [year, month, day] = dateOfBirth.split("-").map(Number);
+
+    if (!year || !month || !day) return null;
+
+    const today = new Date();
+    let age = today.getFullYear() - year;
+
+    const birthdayAlreadyPassed =
+      today.getMonth() + 1 > month ||
+      (today.getMonth() + 1 === month && today.getDate() >= day);
+
+    if (!birthdayAlreadyPassed) {
+      age -= 1;
+    }
+
+    return age;
+  };
+
+  const isAtLeast18 = (dateOfBirth) => {
+    const age = getAge(dateOfBirth);
+    return age !== null && age >= 18;
+  };
+
+  const showMessage = (text, type = "info") => {
+    setMessage(text);
+    setMessageType(type);
+  };
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const storedToken = localStorage.getItem("token");
     const userRaw = localStorage.getItem("user");
 
-    if (!token || !userRaw) {
+    if (!storedToken || !userRaw) {
       navigate("/signin");
       return;
     }
@@ -55,16 +108,7 @@ export default function Profile() {
     try {
       const storedUser = JSON.parse(userRaw);
       setUser(storedUser);
-
-      const savedProfileRaw = localStorage.getItem(
-        `citizen_profile_${storedUser.id}`
-      );
-
-      if (savedProfileRaw) {
-        const savedProfile = JSON.parse(savedProfileRaw);
-        setProfile(savedProfile);
-        setValidIdFileName(savedProfile.valid_id_file_name || "");
-      }
+      setToken(storedToken);
     } catch (error) {
       localStorage.removeItem("user");
       localStorage.removeItem("token");
@@ -72,8 +116,50 @@ export default function Profile() {
     }
   }, [navigate]);
 
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!token) return;
+
+      try {
+        setIsLoading(true);
+
+        const res = await fetch(`${API_BASE_URL}/api/profile`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          showMessage(data.message || "Unable to load profile.", "error");
+          return;
+        }
+
+        const loadedProfile = {
+          ...emptyProfile,
+          ...(data.profile || {}),
+        };
+
+        setProfile(loadedProfile);
+        setValidIdFileName(loadedProfile.valid_id_file_name || "");
+      } catch (error) {
+        console.error("LOAD PROFILE ERROR:", error);
+        showMessage("Cannot connect to server while loading profile.", "error");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadProfile();
+  }, [token]);
+
   const getCompletion = () => {
     const completedFields = requiredFields.filter((field) => {
+      if (field === "date_of_birth") {
+        return profile.date_of_birth && isAtLeast18(profile.date_of_birth);
+      }
+
       return profile[field] && String(profile[field]).trim() !== "";
     });
 
@@ -81,9 +167,11 @@ export default function Profile() {
   };
 
   const isFullyVerified = () => {
-    return requiredFields.every((field) => {
+    const hasAllRequiredFields = requiredFields.every((field) => {
       return profile[field] && String(profile[field]).trim() !== "";
     });
+
+    return hasAllRequiredFields && isAtLeast18(profile.date_of_birth);
   };
 
   const buildCompleteAddress = (updatedProfile) => {
@@ -129,55 +217,124 @@ export default function Profile() {
     const file = e.target.files[0];
 
     if (!file) {
-      setValidIdFileName("");
-      setProfile((prev) => ({
-        ...prev,
-        valid_id_file_name: "",
-      }));
+      setValidIdFile(null);
+      setValidIdFileName(profile.valid_id_file_name || "");
       return;
     }
 
+    setValidIdFile(file);
     setValidIdFileName(file.name);
-
-    setProfile((prev) => ({
-      ...prev,
-      valid_id_file_name: file.name,
-    }));
+    setMessage("");
   };
 
-  const handleSaveProfile = (e) => {
+  const validateProfile = () => {
+    if (profile.date_of_birth && !isAtLeast18(profile.date_of_birth)) {
+      return "Minimum age requirement is 18 years old. The account cannot be Fully Verified.";
+    }
+
+    if (
+      profile.mobile_number &&
+      !/^09\d{9}$/.test(String(profile.mobile_number).trim())
+    ) {
+      return "Please enter a valid Philippine mobile number. Example: 09123456789.";
+    }
+
+    return "";
+  };
+
+  const appendFormValue = (formData, key, value) => {
+    formData.append(key, value || "");
+  };
+
+  const handleSaveProfile = async (e) => {
     e.preventDefault();
 
-    if (!user) {
+    if (!user || !token) {
       navigate("/signin");
       return;
     }
 
-    const finalStatus = isFullyVerified() ? "Fully Verified" : "Not Verified";
+    const validationError = validateProfile();
 
-    const updatedProfile = {
-      ...profile,
-      verification_status: finalStatus,
-      complete_address: buildCompleteAddress(profile),
-      updated_at: new Date().toISOString(),
-    };
+    if (validationError) {
+      showMessage(validationError, "error");
+      return;
+    }
 
-    localStorage.setItem(
-      `citizen_profile_${user.id}`,
-      JSON.stringify(updatedProfile)
-    );
+    try {
+      setIsSubmitting(true);
+      showMessage("", "");
 
-    setProfile(updatedProfile);
+      const finalProfile = {
+        ...profile,
+        complete_address: buildCompleteAddress(profile),
+      };
 
-    if (finalStatus === "Fully Verified") {
-      setMessage("Profile saved. Your account is now Fully Verified.");
-    } else {
-      setMessage("Profile saved. Please complete all required fields.");
+      const formData = new FormData();
+
+      Object.entries(finalProfile).forEach(([key, value]) => {
+        if (
+          key === "id" ||
+          key === "user_id" ||
+          key === "valid_id_path" ||
+          key === "valid_id_file_name" ||
+          key === "verification_status" ||
+          key === "age" ||
+          key === "age_eligible" ||
+          key === "minimum_age" ||
+          key === "latest_allowed_birth_date" ||
+          key === "missing_fields"
+        ) {
+          return;
+        }
+
+        appendFormValue(formData, key, value);
+      });
+
+      if (validIdFile) {
+        formData.append("valid_id", validIdFile);
+      }
+
+      const res = await fetch(`${API_BASE_URL}/api/profile`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        showMessage(data.message || "Unable to save profile.", "error");
+        return;
+      }
+
+      const savedProfile = {
+        ...emptyProfile,
+        ...(data.profile || {}),
+      };
+
+      setProfile(savedProfile);
+      setValidIdFile(null);
+      setValidIdFileName(savedProfile.valid_id_file_name || "");
+      showMessage(data.message || "Profile saved successfully.", "success");
+    } catch (error) {
+      console.error("SAVE PROFILE ERROR:", error);
+      showMessage("Cannot connect to server while saving profile.", "error");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const completion = getCompletion();
   const status = isFullyVerified() ? "Fully Verified" : "Not Verified";
+  const age = getAge(profile.date_of_birth);
+  const ageHint = profile.date_of_birth
+    ? isAtLeast18(profile.date_of_birth)
+      ? `Age requirement passed. Current age: ${age}.`
+      : `Age requirement not met. Current age: ${age}. Minimum age is 18.`
+    : "Select date of birth. Minimum age is 18 years old.";
 
   return (
     <>
@@ -230,8 +387,8 @@ export default function Profile() {
             <div className="profile-note">
               <strong>Verification Rule</strong>
               <p>
-                Required fields must be completed before the account becomes
-                Fully Verified.
+                Required fields must be completed and the citizen must be at
+                least 18 years old before the account becomes Fully Verified.
               </p>
             </div>
 
@@ -245,7 +402,11 @@ export default function Profile() {
           </aside>
 
           <form className="profile-form-card" onSubmit={handleSaveProfile}>
-            {message && <p className="profile-message">{message}</p>}
+            {isLoading && <p className="profile-message">Loading profile...</p>}
+
+            {message && (
+              <p className={`profile-message ${messageType}`}>{message}</p>
+            )}
 
             <div className="profile-section-title">
               <h2>Account Information</h2>
@@ -279,7 +440,17 @@ export default function Profile() {
                   name="date_of_birth"
                   value={profile.date_of_birth}
                   onChange={handleChange}
+                  max={getLatestAllowedBirthDate()}
                 />
+                <p
+                  className={
+                    profile.date_of_birth && !isAtLeast18(profile.date_of_birth)
+                      ? "profile-age-hint error"
+                      : "profile-age-hint"
+                  }
+                >
+                  {ageHint}
+                </p>
               </div>
 
               <div className="profile-field">
@@ -531,12 +702,17 @@ export default function Profile() {
                 type="button"
                 className="profile-cancel-btn"
                 onClick={() => navigate("/citizen")}
+                disabled={isSubmitting}
               >
                 Cancel
               </button>
 
-              <button type="submit" className="profile-save-btn">
-                Save Profile Verification
+              <button
+                type="submit"
+                className="profile-save-btn"
+                disabled={isSubmitting || isLoading}
+              >
+                {isSubmitting ? "Saving Profile..." : "Save Profile Verification"}
               </button>
             </div>
           </form>

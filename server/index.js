@@ -24,15 +24,24 @@ const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// ================= EMAIL CONFIGURATION =================
-// Email functionality disabled for now - keeping UI only
+// ================= DATABASE QUERY HELPER =================
+const query = (sql, params = []) => {
+  return new Promise((resolve, reject) => {
+    db.query(sql, params, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
+};
 
-// Fallback nodemailer for other uses (if needed)
-const transporter = nodemailer.createTransport({
-  service: "gmail",
+// ================= EMAIL CONFIGURATION =================
+const emailTransporter = nodemailer.createTransport({
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD,
+    pass: process.env.EMAIL_PASSWORD || process.env.EMAIL_PASS,
   },
 });
 
@@ -158,7 +167,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // ================= SERVE UPLOADED FILES =================
-// NOTE: For MVP, this works. Later, protect sensitive upload files through a secured route.
+// NOTE: For MVP, this works. Later, protect sensitive uploads through secure routes.
 app.use("/uploads", express.static(uploadsDir));
 app.use("/server/uploads", express.static(uploadsDir));
 
@@ -202,7 +211,6 @@ app.get("/api/auth-rules", (req, res) => {
   });
 });
 
-// Backward-compatible endpoint if frontend already uses it
 app.get("/api/password-rules", (req, res) => {
   return res.status(200).json({
     message: "Password rules loaded.",
@@ -217,9 +225,7 @@ app.get("/api/password-rules", (req, res) => {
   });
 });
 
-// ================= AUTH ROUTES =================
-
-// REGISTER
+// ================= REGISTER =================
 app.post("/api/register", async (req, res) => {
   const fullName = cleanText(req.body.full_name);
   const email = cleanEmail(req.body.email);
@@ -253,45 +259,35 @@ app.post("/api/register", async (req, res) => {
   try {
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    db.query(
+    const result = await query(
       `INSERT INTO users
        (full_name, email, password, role, auth_provider)
        VALUES (?, ?, ?, ?, 'local')`,
-      [fullName, email, hashedPassword, "citizen"],
-      (err, result) => {
-        if (err) {
-          if (err.code === "ER_DUP_ENTRY") {
-            return res.status(400).json({
-              message: "Email already exists.",
-            });
-          }
-
-          console.error("REGISTER DATABASE ERROR:", err);
-
-          return res.status(500).json({
-            message: "Database error.",
-            error: err.message,
-          });
-        }
-
-        return res.status(201).json({
-          message: "User registered successfully.",
-          userId: result.insertId,
-        });
-      }
+      [fullName, email, hashedPassword, "citizen"]
     );
+
+    return res.status(201).json({
+      message: "User registered successfully.",
+      userId: result.insertId,
+    });
   } catch (err) {
-    console.error("REGISTER SERVER ERROR:", err);
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(400).json({
+        message: "Email already exists.",
+      });
+    }
+
+    console.error("REGISTER ERROR:", err);
 
     return res.status(500).json({
-      message: "Server error.",
+      message: "Database error.",
       error: err.message,
     });
   }
 });
 
-// LOGIN
-app.post("/api/login", (req, res) => {
+// ================= LOGIN =================
+app.post("/api/login", async (req, res) => {
   const email = cleanEmail(req.body.email);
   const password = String(req.body.password || "");
 
@@ -320,71 +316,60 @@ app.post("/api/login", (req, res) => {
     });
   }
 
-  db.query(
-    "SELECT * FROM users WHERE email = ? LIMIT 1",
-    [email],
-    async (err, results) => {
-      if (err) {
-        console.error("LOGIN DATABASE ERROR:", err);
+  try {
+    const users = await query("SELECT * FROM users WHERE email = ? LIMIT 1", [
+      email,
+    ]);
 
-        return res.status(500).json({
-          message: "Database error.",
-          error: err.message,
-        });
-      }
+    if (users.length === 0) {
+      recordFailedLogin(email);
 
-      if (results.length === 0) {
-        recordFailedLogin(email);
-
-        return res.status(401).json({
-          message: "Invalid email or password.",
-        });
-      }
-
-      try {
-        const user = results[0];
-
-        if (!user.password) {
-          recordFailedLogin(email);
-
-          return res.status(400).json({
-            message:
-              "This account uses Google Sign-In. Please continue with Google.",
-          });
-        }
-
-        const passwordMatched = await bcrypt.compare(password, user.password);
-
-        if (!passwordMatched) {
-          recordFailedLogin(email);
-
-          return res.status(401).json({
-            message: "Invalid email or password.",
-          });
-        }
-
-        resetLoginAttempt(email);
-
-        const token = createSystemToken(user);
-
-        return res.status(200).json({
-          message: "Login success.",
-          user: buildSafeUser(user),
-          token,
-        });
-      } catch (compareErr) {
-        console.error("BCRYPT COMPARE ERROR:", compareErr);
-
-        return res.status(500).json({
-          message: "Server error.",
-          error: compareErr.message,
-        });
-      }
+      return res.status(401).json({
+        message: "Invalid email or password.",
+      });
     }
-  );
+
+    const user = users[0];
+
+    if (!user.password) {
+      recordFailedLogin(email);
+
+      return res.status(400).json({
+        message:
+          "This account uses Google Sign-In. Please continue with Google.",
+      });
+    }
+
+    const passwordMatched = await bcrypt.compare(password, user.password);
+
+    if (!passwordMatched) {
+      recordFailedLogin(email);
+
+      return res.status(401).json({
+        message: "Invalid email or password.",
+      });
+    }
+
+    resetLoginAttempt(email);
+
+    const token = createSystemToken(user);
+
+    return res.status(200).json({
+      message: "Login success.",
+      user: buildSafeUser(user),
+      token,
+    });
+  } catch (err) {
+    console.error("LOGIN ERROR:", err);
+
+    return res.status(500).json({
+      message: "Database error.",
+      error: err.message,
+    });
+  }
 });
 
-// GOOGLE LOGIN
+// ================= GOOGLE LOGIN =================
 app.post("/api/google-login", async (req, res) => {
   const { credential } = req.body;
 
@@ -430,101 +415,268 @@ app.post("/api/google-login", async (req, res) => {
     const email = cleanEmail(payload.email);
     const fullName = cleanText(payload.name) || email.split("@")[0];
 
-    db.query(
+    const existingUsers = await query(
       "SELECT * FROM users WHERE email = ? OR google_id = ? LIMIT 1",
-      [email, googleId],
-      (findErr, users) => {
-        if (findErr) {
-          console.error("GOOGLE FIND USER ERROR:", findErr);
-
-          return res.status(500).json({
-            message: "Database error while checking Google account.",
-            error: findErr.message,
-          });
-        }
-
-        if (users.length > 0) {
-          const user = users[0];
-
-          const finishLogin = (updatedUser) => {
-            const token = createSystemToken(updatedUser);
-
-            return res.status(200).json({
-              message: "Google login success.",
-              user: buildSafeUser(updatedUser),
-              token,
-            });
-          };
-
-          if (!user.google_id) {
-            db.query(
-              `UPDATE users
-               SET google_id = ?
-               WHERE id = ?`,
-              [googleId, user.id],
-              (updateErr) => {
-                if (updateErr) {
-                  console.error("GOOGLE LINK ACCOUNT ERROR:", updateErr);
-
-                  return res.status(500).json({
-                    message: "Database error while linking Google account.",
-                    error: updateErr.message,
-                  });
-                }
-
-                return finishLogin({
-                  ...user,
-                  google_id: googleId,
-                });
-              }
-            );
-
-            return;
-          }
-
-          return finishLogin(user);
-        }
-
-        db.query(
-          `INSERT INTO users
-           (full_name, email, password, role, google_id, auth_provider)
-           VALUES (?, ?, NULL, 'citizen', ?, 'google')`,
-          [fullName, email, googleId],
-          (insertErr, result) => {
-            if (insertErr) {
-              console.error("GOOGLE CREATE USER ERROR:", insertErr);
-
-              return res.status(500).json({
-                message: "Database error while creating Google account.",
-                error: insertErr.message,
-              });
-            }
-
-            const newUser = {
-              id: result.insertId,
-              full_name: fullName,
-              email,
-              role: "citizen",
-              google_id: googleId,
-              auth_provider: "google",
-            };
-
-            const token = createSystemToken(newUser);
-
-            return res.status(201).json({
-              message: "Google account created and logged in.",
-              user: buildSafeUser(newUser),
-              token,
-            });
-          }
-        );
-      }
+      [email, googleId]
     );
+
+    if (existingUsers.length > 0) {
+      const user = existingUsers[0];
+
+      if (!user.google_id) {
+        await query(
+          `UPDATE users
+           SET google_id = ?
+           WHERE id = ?`,
+          [googleId, user.id]
+        );
+
+        user.google_id = googleId;
+      }
+
+      const token = createSystemToken(user);
+
+      return res.status(200).json({
+        message: "Google login success.",
+        user: buildSafeUser(user),
+        token,
+      });
+    }
+
+    const result = await query(
+      `INSERT INTO users
+       (full_name, email, password, role, google_id, auth_provider)
+       VALUES (?, ?, NULL, 'citizen', ?, 'google')`,
+      [fullName, email, googleId]
+    );
+
+    const newUser = {
+      id: result.insertId,
+      full_name: fullName,
+      email,
+      role: "citizen",
+      google_id: googleId,
+      auth_provider: "google",
+    };
+
+    const token = createSystemToken(newUser);
+
+    return res.status(201).json({
+      message: "Google account created and logged in.",
+      user: buildSafeUser(newUser),
+      token,
+    });
   } catch (err) {
     console.error("GOOGLE LOGIN ERROR:", err);
 
     return res.status(401).json({
       message: "Google sign-in verification failed.",
+      error: err.message,
+    });
+  }
+});
+
+// ================= FORGOT PASSWORD =================
+app.post("/api/forgot-password", async (req, res) => {
+  const email = cleanEmail(req.body.email);
+
+  if (!email) {
+    return res.status(400).json({
+      message: "Email is required.",
+    });
+  }
+
+  if (!isValidEmail(email)) {
+    return res.status(400).json({
+      message: "Please enter a valid email address.",
+    });
+  }
+
+  if (!process.env.EMAIL_USER || !(process.env.EMAIL_PASSWORD || process.env.EMAIL_PASS)) {
+    return res.status(500).json({
+      message: "Email sender is not configured in the server .env file.",
+    });
+  }
+
+  if (!process.env.RESET_PASSWORD_URL) {
+    return res.status(500).json({
+      message: "RESET_PASSWORD_URL is not configured in the server .env file.",
+    });
+  }
+
+  try {
+    const users = await query("SELECT id, email FROM users WHERE email = ? LIMIT 1", [
+      email,
+    ]);
+
+    if (users.length === 0) {
+      return res.status(200).json({
+        message: "If this email exists, a password reset link has been sent.",
+      });
+    }
+
+    const user = users[0];
+
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    const resetTokenHash = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    await query(
+      `UPDATE password_reset_tokens
+       SET used_at = NOW()
+       WHERE user_id = ? AND used_at IS NULL`,
+      [user.id]
+    );
+
+    await query(
+      `INSERT INTO password_reset_tokens
+       (user_id, token_hash, expires_at)
+       VALUES (?, ?, ?)`,
+      [user.id, resetTokenHash, expiresAt]
+    );
+
+    const resetLink = `${process.env.RESET_PASSWORD_URL}?token=${resetToken}`;
+
+    const mailOptions = {
+      from: `"Document Tracker System" <${process.env.EMAIL_USER}>`,
+      to: user.email,
+      subject: "Password Reset Request - Barangay Document Tracker",
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333;">Password Reset Request</h2>
+
+          <p>Hello,</p>
+
+          <p>We received a request to reset your password. Click the button below to reset it:</p>
+
+          <p style="margin: 30px 0;">
+            <a href="${resetLink}" style="display: inline-block; background-color: #0056b3; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+              Reset Password
+            </a>
+          </p>
+
+          <p style="margin-top: 20px; color: #666;">Or copy and paste this link in your browser:</p>
+
+          <p style="word-break: break-all; background-color: #f5f5f5; padding: 10px; border-radius: 3px;">
+            ${resetLink}
+          </p>
+
+          <p style="margin-top: 20px; color: #666; font-size: 14px;">
+            <strong>This link will expire in 30 minutes.</strong>
+          </p>
+
+          <p style="color: #666; font-size: 14px;">
+            If you did not request this password reset, please ignore this email.
+          </p>
+
+          <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
+
+          <p style="color: #999; font-size: 12px;">
+            Best regards,<br>
+            Document Tracker System
+          </p>
+        </div>
+      `,
+    };
+
+    try {
+      await emailTransporter.verify();
+      console.log("Email transporter is ready.");
+
+      const info = await emailTransporter.sendMail(mailOptions);
+
+      console.log("Password reset email sent:", info.messageId);
+      console.log("Reset link:", resetLink);
+
+      return res.status(200).json({
+        message: "Password reset link has been sent to your email.",
+      });
+    } catch (mailErr) {
+      console.error("EMAIL SEND ERROR:", mailErr);
+
+      return res.status(500).json({
+        message:
+          "Reset token was created, but email could not be sent. Check Gmail App Password or email settings.",
+        error: mailErr.message,
+        reset_link_for_testing: resetLink,
+      });
+    }
+  } catch (err) {
+    console.error("FORGOT PASSWORD ERROR:", err);
+
+    return res.status(500).json({
+      message: "Server error.",
+      error: err.message,
+    });
+  }
+});
+
+// ================= RESET PASSWORD =================
+app.post("/api/reset-password", async (req, res) => {
+  const token = String(req.body.token || "");
+  const newPassword = String(req.body.newPassword || "");
+
+  if (!token || !newPassword) {
+    return res.status(400).json({
+      message: "Token and new password are required.",
+    });
+  }
+
+  if (!isStrongPassword(newPassword)) {
+    return res.status(400).json({
+      message:
+        "Password must be at least 8 characters and include uppercase, lowercase, number, and special character.",
+    });
+  }
+
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+  try {
+    const tokenRows = await query(
+      `SELECT prt.id, prt.user_id
+       FROM password_reset_tokens prt
+       WHERE prt.token_hash = ?
+         AND prt.expires_at > NOW()
+         AND prt.used_at IS NULL
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    if (tokenRows.length === 0) {
+      return res.status(400).json({
+        message: "Invalid or expired reset token.",
+      });
+    }
+
+    const resetRecord = tokenRows[0];
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    await query(
+      `UPDATE users
+       SET password = ?, auth_provider = COALESCE(auth_provider, 'local')
+       WHERE id = ?`,
+      [hashedPassword, resetRecord.user_id]
+    );
+
+    await query(
+      `UPDATE password_reset_tokens
+       SET used_at = NOW()
+       WHERE id = ?`,
+      [resetRecord.id]
+    );
+
+    return res.status(200).json({
+      message: "Password reset successfully. You can now login.",
+    });
+  } catch (err) {
+    console.error("RESET PASSWORD ERROR:", err);
+
+    return res.status(500).json({
+      message: "Server error.",
       error: err.message,
     });
   }
@@ -537,183 +689,6 @@ app.use("/api", receiptRoutes);
 app.use("/api", reportRoutes);
 app.use("/api", feedbackRoutes);
 app.use("/api", superadminRoutes);
-
-// ================= PASSWORD RESET ENDPOINTS =================
-app.post("/api/forgot-password", async (req, res) => {
-  const { email } = req.body;
-
-  if (!email) {
-    return res.status(400).json({
-      message: "Email is required.",
-    });
-  }
-
-  const cleanedEmail = cleanEmail(email);
-
-  try {
-    db.query(
-      "SELECT id FROM users WHERE email = ? LIMIT 1",
-      [cleanedEmail],
-      async (err, users) => {
-        if (err) {
-          console.error("FORGOT PASSWORD DB ERROR:", err);
-          return res.status(500).json({
-            message: "Database error.",
-            error: err.message,
-          });
-        }
-
-        if (users.length === 0) {
-          // Don't reveal if email exists or not (security best practice)
-          return res.status(200).json({
-            message: "If this email exists, a password reset link has been sent.",
-          });
-        }
-
-        // Generate reset token
-        const resetToken = crypto.randomBytes(32).toString("hex");
-        const resetTokenHash = crypto.createHash("sha256").update(resetToken).digest("hex");
-        const expiryTime = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
-
-        db.query(
-          "UPDATE users SET password_reset_token = ?, reset_token_expiry = ? WHERE id = ?",
-          [resetTokenHash, expiryTime, users[0].id],
-          async (updateErr) => {
-            if (updateErr) {
-              console.error("RESET TOKEN SAVE ERROR:", updateErr);
-              return res.status(500).json({
-                message: "Error generating reset token.",
-              });
-            }
-
-            // Send email using Gmail
-            const resetLink = `${process.env.RESET_PASSWORD_URL}?token=${resetToken}`;
-            
-            const mailOptions = {
-              from: process.env.EMAIL_USER,
-              to: cleanedEmail,
-              subject: "Password Reset Request - Baranggay Document Tracker",
-              html: `
-                <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
-                  <h2 style="color: #333;">Password Reset Request</h2>
-                  <p>Hello,</p>
-                  <p>We received a request to reset your password. Click the button below to reset it:</p>
-                  <p style="margin: 30px 0;">
-                    <a href="${resetLink}" style="display: inline-block; background-color: #007bff; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-                      Reset Password
-                    </a>
-                  </p>
-                  <p style="margin-top: 20px; color: #666;">Or copy and paste this link in your browser:</p>
-                  <p style="word-break: break-all; background-color: #f5f5f5; padding: 10px; border-radius: 3px;">
-                    ${resetLink}
-                  </p>
-                  <p style="margin-top: 20px; color: #666; font-size: 14px;">
-                    <strong>This link will expire in 30 minutes.</strong>
-                  </p>
-                  <p style="color: #666; font-size: 14px;">If you didn't request this, please ignore this email.</p>
-                  <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
-                  <p style="color: #999; font-size: 12px;">Best regards,<br>Document Tracker Team</p>
-                </div>
-              `,
-            };
-
-            try {
-              await transporter.sendMail(mailOptions);
-              console.log(`Password reset email sent to: ${cleanedEmail}`);
-              res.status(200).json({
-                message: "If this email exists, a password reset link has been sent.",
-              });
-            } catch (mailErr) {
-              console.error("EMAIL SEND ERROR:", mailErr);
-              // Still return success to not reveal if email exists
-              res.status(200).json({
-                message: "If this email exists, a password reset link has been sent.",
-              });
-            }
-          }
-        );
-      }
-    );
-  } catch (err) {
-    console.error("FORGOT PASSWORD ERROR:", err);
-    res.status(500).json({
-      message: "Server error.",
-      error: err.message,
-    });
-  }
-});
-
-app.post("/api/reset-password", async (req, res) => {
-  const { token, newPassword } = req.body;
-
-  if (!token || !newPassword) {
-    return res.status(400).json({
-      message: "Token and new password are required.",
-    });
-  }
-
-  if (newPassword.length < 8) {
-    return res.status(400).json({
-      message: "Password must be at least 8 characters.",
-    });
-  }
-
-  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-
-  try {
-    db.query(
-      "SELECT id FROM users WHERE password_reset_token = ? AND reset_token_expiry > NOW() LIMIT 1",
-      [tokenHash],
-      async (err, users) => {
-        if (err) {
-          console.error("RESET PASSWORD DB ERROR:", err);
-          return res.status(500).json({
-            message: "Database error.",
-            error: err.message,
-          });
-        }
-
-        if (users.length === 0) {
-          return res.status(400).json({
-            message: "Invalid or expired reset token.",
-          });
-        }
-
-        try {
-          const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-          db.query(
-            "UPDATE users SET password = ?, password_reset_token = NULL, reset_token_expiry = NULL WHERE id = ?",
-            [hashedPassword, users[0].id],
-            (updateErr) => {
-              if (updateErr) {
-                console.error("PASSWORD UPDATE ERROR:", updateErr);
-                return res.status(500).json({
-                  message: "Error updating password.",
-                });
-              }
-
-              res.status(200).json({
-                message: "Password reset successfully. You can now login.",
-              });
-            }
-          );
-        } catch (hashErr) {
-          console.error("PASSWORD HASH ERROR:", hashErr);
-          res.status(500).json({
-            message: "Error processing password.",
-          });
-        }
-      }
-    );
-  } catch (err) {
-    console.error("RESET PASSWORD ERROR:", err);
-    res.status(500).json({
-      message: "Server error.",
-      error: err.message,
-    });
-  }
-});
 
 // ================= 404 HANDLER =================
 app.use((req, res) => {

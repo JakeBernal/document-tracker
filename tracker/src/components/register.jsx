@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "./navbar";
-import "../css/login.css";
+import "../css/register.css";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -138,107 +138,119 @@ export default function Register() {
 
   return (
     <div>
-      <Navbar />
+  <Navbar />
 
-      <div className="login-container">
+  <div className="login-wrapper">
+    <div className="login-card">
+
+      {/* LEFT IMAGE */}
+      <div className="login-image-section">
+        <img
+          src="/Deadline-bro.png"
+          alt="Register Illustration"
+          className="login-image"
+        />
+      </div>
+
+      {/* RIGHT FORM */}
+      <div className="login-form-section">
+
         <div className="tabs">
           <span onClick={() => navigate("/signin")}>Login</span>
           <span className="active">Register</span>
         </div>
 
         {message && (
-          <p
-            className={`form-message ${
-              messageType === "success" ? "success-message" : "error-message"
-            }`}
-          >
+          <p className={`form-message ${
+            messageType === "success"
+              ? "success-message"
+              : "error-message"
+          }`}>
             {message}
           </p>
         )}
 
-        <form onSubmit={handleSubmit}>
-          <div className="form">
-            <label>Full Name</label>
+        <form onSubmit={handleSubmit} className="form">
+
+          {/* FULL NAME */}
+          <label>Full Name</label>
+          <input
+            type="text"
+            name="full_name"
+            value={form.full_name}
+            onChange={handleChange}
+            placeholder="Enter your full name"
+          />
+
+          {/* EMAIL */}
+          <label>Email</label>
+          <input
+            type="email"
+            name="email"
+            value={form.email}
+            onChange={handleChange}
+            placeholder="Example: citizen.demo@gmail.com"
+          />
+
+          {/* PASSWORD */}
+          <label>Password</label>
+          <div className="password-wrapper">
             <input
-              type="text"
-              name="full_name"
-              value={form.full_name}
+              type={showPassword ? "text" : "password"}
+              name="password"
+              value={form.password}
               onChange={handleChange}
-              placeholder="Enter your full name"
-              autoComplete="name"
+              placeholder="Example: Citizen123."
             />
-
-            <label>Email</label>
-            <input
-              type="email"
-              name="email"
-              value={form.email}
-              onChange={handleChange}
-              placeholder="Example: citizen.demo@gmail.com"
-              autoComplete="email"
-            />
-
-            <label>Password</label>
-            <div className="password-field">
-              <input
-                type={showPassword ? "text" : "password"}
-                name="password"
-                value={form.password}
-                onChange={handleChange}
-                placeholder="Example: Citizen123."
-                autoComplete="new-password"
-              />
-
-              <button
-                type="button"
-                className="password-toggle-btn"
-                onClick={() => setShowPassword((prev) => !prev)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
-              >
-                {showPassword ? "Hide" : "Show"}
-              </button>
-            </div>
-
-            <div className="password-guide">
-              Password must have at least 8 characters, 1 uppercase letter, 1
-              lowercase letter, 1 number, and 1 special character.
-            </div>
-
-            <label>Confirm Password</label>
-            <div className="password-field">
-              <input
-                type={showConfirmPassword ? "text" : "password"}
-                name="confirm_password"
-                value={form.confirm_password}
-                onChange={handleChange}
-                placeholder="Re-enter your password"
-                autoComplete="new-password"
-              />
-
-              <button
-                type="button"
-                className="password-toggle-btn"
-                onClick={() => setShowConfirmPassword((prev) => !prev)}
-                aria-label={
-                  showConfirmPassword
-                    ? "Hide confirm password"
-                    : "Show confirm password"
-                }
-              >
-                {showConfirmPassword ? "Hide" : "Show"}
-              </button>
-            </div>
 
             <button
-              type="submit"
-              className="signin-btn"
-              disabled={isSubmitting}
+              type="button"
+              className="eye-btn"
+              onClick={() => setShowPassword((prev) => !prev)}
             >
-              {isSubmitting ? "Creating Account..." : "Create Account"}
+              {showPassword ? "Hide" : "Show"}
             </button>
           </div>
+
+          <div className="password-guide">
+            Password must have at least 8 characters, 1 uppercase letter,
+            1 lowercase letter, 1 number, and 1 special character.
+          </div>
+
+          {/* CONFIRM PASSWORD */}
+          <label>Confirm Password</label>
+          <div className="password-wrapper">
+            <input
+              type={showConfirmPassword ? "text" : "password"}
+              name="confirm_password"
+              value={form.confirm_password}
+              onChange={handleChange}
+              placeholder="Re-enter your password"
+            />
+
+            <button
+              type="button"
+              className="eye-btn"
+              onClick={() => setShowConfirmPassword((prev) => !prev)}
+            >
+              {showConfirmPassword ? "Hide" : "Show"}
+            </button>
+          </div>
+
+          {/* SUBMIT */}
+          <button
+            type="submit"
+            className="signin-btn"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? "Creating Account..." : "Create Account"}
+          </button>
+
         </form>
       </div>
+
     </div>
+  </div>
+</div>
   );
 }

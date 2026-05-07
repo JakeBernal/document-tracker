@@ -23,30 +23,19 @@ export default function Login() {
   const googleClientReady = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
 
   const redirectByRole = (user) => {
-    if (user.role === "admin") {
-      navigate("/admin");
-    } else if (user.role === "superadmin") {
-      navigate("/superadmin");
-    } else {
-      navigate("/citizen");
-    }
+    if (user.role === "admin") navigate("/admin");
+    else if (user.role === "superadmin") navigate("/superadmin");
+    else navigate("/citizen");
   };
 
   const handleChange = (e) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
-
+    setForm({ ...form, [e.target.name]: e.target.value });
     setMessage("");
     setMessageType("");
   };
 
   const handleLogin = async (e) => {
     e.preventDefault();
-
-    setMessage("");
-    setMessageType("");
 
     if (!form.email.trim() || !form.password) {
       setMessage("Please enter your email and password.");
@@ -59,9 +48,7 @@ export default function Login() {
     try {
       const res = await fetch("http://localhost:5001/api/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: form.email.trim().toLowerCase(),
           password: form.password,
@@ -77,16 +64,13 @@ export default function Login() {
         setMessage("Login successful! Redirecting...");
         setMessageType("success");
 
-        setTimeout(() => {
-          redirectByRole(data.user);
-        }, 500);
+        setTimeout(() => redirectByRole(data.user), 500);
       } else {
         setMessage(data.message || "Incorrect email or password.");
         setMessageType("error");
       }
     } catch (err) {
-      console.error("LOGIN ERROR:", err);
-      setMessage("Cannot connect to the server. Please check your backend.");
+      setMessage("Cannot connect to the server.");
       setMessageType("error");
     } finally {
       setLoading(false);
@@ -97,21 +81,17 @@ export default function Login() {
     const credential = credentialResponse?.credential;
 
     if (!credential) {
-      setMessage("Google sign-in failed. No credential received.");
+      setMessage("Google sign-in failed.");
       setMessageType("error");
       return;
     }
 
     try {
       setGoogleLoading(true);
-      setMessage("");
-      setMessageType("");
 
       const res = await fetch("http://localhost:5001/api/google-login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ credential }),
       });
 
@@ -129,122 +109,126 @@ export default function Login() {
       setMessage("Google sign-in successful! Redirecting...");
       setMessageType("success");
 
-      setTimeout(() => {
-        redirectByRole(data.user);
-      }, 500);
+      setTimeout(() => redirectByRole(data.user), 500);
     } catch (err) {
-      console.error("GOOGLE LOGIN ERROR:", err);
-      setMessage("Cannot connect to the server for Google sign-in.");
+      setMessage("Google sign-in error.");
       setMessageType("error");
     } finally {
       setGoogleLoading(false);
     }
   };
 
-  const handleGoogleError = () => {
-    setMessage("Google sign-in was cancelled or failed.");
-    setMessageType("error");
-  };
-
-  const handleForgotPassword = () => {
-    setShowForgotPasswordModal(true);
-  };
-
   return (
     <div>
       <Navbar />
 
-      <div className="login-container">
-        <div className="tabs">
-          <span className="active">Login</span>
-          <span onClick={() => navigate("/signup")}>Register</span>
-        </div>
+      <div className="login-wrapper">
+        {/* LOGIN CARD */}
+        <div className="login-card">
 
-        {message && (
-          <p
-            className={`form-message ${
-              messageType === "success" ? "success-message" : "error-message"
-            }`}
-          >
-            {message}
-          </p>
-        )}
-
-        <form onSubmit={handleLogin}>
-          <div className="form">
-            <label>Email</label>
-            <input
-              type="email"
-              name="email"
-              value={form.email}
-              onChange={handleChange}
-              placeholder="you@example.com"
-              autoComplete="email"
+          {/* LEFT IMAGE */}
+          <div className="login-image-section">
+            
+            <img
+              src="/Deadline-bro.png"
+              alt="Login Illustration"
+              className="login-image"
             />
+        
+          </div>
 
-            <label>Password</label>
-            <div className="password-field">
+          {/* RIGHT FORM */}
+          <div className="login-form-section">
+
+            <div className="tabs">
+              <span className="active">Login</span>
+              <span onClick={() => navigate("/signup")}>Register</span>
+            </div>
+
+            {message && (
+              <p
+                className={`form-message ${
+                  messageType === "success"
+                    ? "success-message"
+                    : "error-message"
+                }`}
+              >
+                {message}
+              </p>
+            )}
+
+            <form onSubmit={handleLogin} className="form">
+
+              <label>Email</label>
               <input
-                type={showPassword ? "text" : "password"}
-                name="password"
-                value={form.password}
+                type="email"
+                name="email"
+                value={form.email}
                 onChange={handleChange}
-                placeholder="Your password"
-                autoComplete="current-password"
+                placeholder="you@example.com"
               />
+
+              <label>Password</label>
+              <div className="password-wrapper">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  value={form.password}
+                  onChange={handleChange}
+                  placeholder="Your password"
+                />
+
+                <button
+                  type="button"
+                  className="eye-btn"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
 
               <button
                 type="button"
-                className="password-toggle-btn"
-                onClick={() => setShowPassword((prev) => !prev)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
+                className="forgot"
+                onClick={() => setShowForgotPasswordModal(true)}
               >
-                {showPassword ? "Hide" : "Show"}
+                Forgot password?
               </button>
-            </div>
 
-            <button
-              type="button"
-              className="forgot"
-              onClick={handleForgotPassword}
-            >
-              Forgot password?
-            </button>
+              <button type="submit" className="signin-btn" disabled={loading}>
+                {loading ? "Signing in..." : "Sign In"}
+              </button>
 
-            <button type="submit" className="signin-btn" disabled={loading}>
-              {loading ? "Signing in..." : "Sign In"}
-            </button>
+              <div className="divider">or</div>
 
-            <div className="divider">or</div>
-
-            <div className="google-login-box">
-              {googleClientReady ? (
-                <>
-                  {googleLoading && (
+              <div className="google-login-box">
+                {googleClientReady ? (
+                  googleLoading ? (
                     <p className="google-loading-text">
                       Connecting to Google...
                     </p>
-                  )}
+                  ) : (
+                    <GoogleLogin
+                      onSuccess={handleGoogleSuccess}
+                      onError={() =>
+                        setMessage("Google sign-in failed.")
+                      }
+                      text="signin_with"
+                      shape="rectangular"
+                      theme="outline"
+                      size="large"
+                    />
+                  )
+                ) : (
+                  <button type="button" className="google-btn" disabled>
+                    Google Sign-In not configured
+                  </button>
+                )}
+              </div>
 
-                  <GoogleLogin
-                    onSuccess={handleGoogleSuccess}
-                    onError={handleGoogleError}
-                    text="signin_with"
-                    shape="rectangular"
-                    theme="outline"
-                    size="large"
-                    width="304"
-                    useOneTap={false}
-                  />
-                </>
-              ) : (
-                <button type="button" className="google-btn" disabled>
-                  Google Sign-In is not configured
-                </button>
-              )}
-            </div>
+            </form>
           </div>
-        </form>
+        </div>
       </div>
 
       <ForgotPasswordModal

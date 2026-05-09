@@ -351,7 +351,7 @@
     "Application of Marriage License": {
       id: 5,
       category: "LGU",
-      fee: "Varies",
+      fee: "₱180.00",
       time: "3–10 working days",
       images: [marriageLicense],
       description:
@@ -397,7 +397,7 @@
     "Certificate of Death": {
       id: 11,
       category: "LGU",
-      fee: "Varies",
+      fee: "₱180.00",
       time: "3–7 working days",
       images: [deathCert1, deathCert2],
       description:
@@ -444,7 +444,7 @@
     "Certificate of Fetal Death": {
       id: 13,
       category: "LGU",
-      fee: "Varies",
+      fee: "₱180.00",
       time: "3–7 working days",
       images: [fetalDeath1, fetalDeath2],
       description:
@@ -491,7 +491,7 @@
     "Certificate of Marriage": {
       id: 15,
       category: "LGU",
-      fee: "Varies",
+      fee: "₱180.00",
       time: "3–7 working days",
       images: [marriageCert1, marriageCert2],
       description:
@@ -565,7 +565,7 @@
     "No Real Property Unit": {
       id: 18,
       category: "LGU",
-      fee: "Varies",
+      fee: "₱180.00",
       time: "3–5 working days",
       images: [noRealProperty],
       description:
@@ -723,7 +723,7 @@
     "Tax Declaration of Real Property": {
       id: 23,
       category: "LGU",
-      fee: "Varies",
+      fee: "₱180.00",
       time: "5–10 working days",
       images: [taxDeclaration],
       description:

@@ -34,6 +34,7 @@ exports.getReceiptByRequestId = async (req, res) => {
           r.status AS request_status,
           r.payment_status,
           r.form_data,
+          r.notes,
           r.created_at AS date_submitted,
           u.full_name AS citizen_name,
           u.email AS citizen_email,
@@ -66,6 +67,7 @@ exports.getReceiptByRequestId = async (req, res) => {
     }
 
     const parsedFormData = parseFormData(receipt.form_data);
+    const parsedNotes = parseFormData(receipt.notes);
 
     const cleanReceipt = {
       receipt_id: receipt.id,
@@ -86,6 +88,42 @@ exports.getReceiptByRequestId = async (req, res) => {
       payment_reference: receipt.payment_reference || "N/A",
       date_submitted: receipt.date_submitted,
       issued_at: receipt.issued_at,
+      form_data: parsedFormData,
+      notes: parsedNotes,
+      person_named_in_document:
+        parsedFormData.person_named_in_document ||
+        parsedNotes.person_named_in_document ||
+        parsedFormData.request_subject_name ||
+        parsedNotes.request_subject_name ||
+        null,
+      senior_discount_code:
+        parsedFormData.senior_discount_code ||
+        parsedNotes.senior_discount_code ||
+        null,
+      senior_discount_description:
+        parsedFormData.senior_discount_description ||
+        parsedNotes.senior_discount_description ||
+        null,
+      senior_discount_type:
+        parsedFormData.senior_discount_type ||
+        parsedNotes.senior_discount_type ||
+        null,
+      senior_discount_value:
+        parsedFormData.senior_discount_value ||
+        parsedNotes.senior_discount_value ||
+        null,
+      senior_discount_reason:
+        parsedFormData.senior_discount_reason ||
+        parsedNotes.senior_discount_reason ||
+        null,
+      senior_eligibility:
+        parsedFormData.senior_eligibility ||
+        parsedNotes.senior_eligibility ||
+        null,
+      senior_beneficiary_birth_date:
+        parsedFormData.senior_beneficiary_birth_date ||
+        parsedNotes.senior_beneficiary_birth_date ||
+        null,
       payment_status: receipt.payment_status || "Unpaid",
       request_status: receipt.request_status || "Pending",
     };

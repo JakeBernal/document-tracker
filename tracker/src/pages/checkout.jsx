@@ -6,6 +6,18 @@ import { documentRequirements } from "../data/documentRequirements";
 
 const API_BASE_URL = "http://localhost:5001";
 const SYSTEM_FEE_AMOUNT = 10;
+const SENIOR_CITIZEN_AGE = 60;
+
+const getMaximumBirthDateForAge = (minimumAge) => {
+  const today = new Date();
+  const maximumDate = new Date(
+    today.getFullYear() - minimumAge,
+    today.getMonth(),
+    today.getDate()
+  );
+
+  return maximumDate.toISOString().split("T")[0];
+};
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -55,6 +67,16 @@ export default function Checkout() {
   const [paymentProof, setPaymentProof] = useState(null);
   const [paymentProofName, setPaymentProofName] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
+  const [seniorDiscountCode, setSeniorDiscountCode] = useState(
+    checkoutData?.seniorDiscountCode || checkoutData?.senior_discount_code || ""
+  );
+  const [seniorBeneficiaryBirthDate, setSeniorBeneficiaryBirthDate] = useState(
+    checkoutData?.seniorBeneficiaryBirthDate ||
+      checkoutData?.senior_beneficiary_birth_date ||
+      ""
+  );
+  const [seniorPromoResult, setSeniorPromoResult] = useState(null);
+  const [isCheckingPromo, setIsCheckingPromo] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -293,9 +315,12 @@ export default function Checkout() {
   }
 
   const paymentMethod = checkoutData.paymentMethod || "Onsite Payment";
-
-  const isOnlinePayment =
-    paymentMethod === "GCash" || paymentMethod === "PayMaya";
+  const normalizedSeniorDiscountCode = seniorDiscountCode.trim().toUpperCase();
+  const seniorBirthDateMax = getMaximumBirthDateForAge(SENIOR_CITIZEN_AGE);
+  const appliedSeniorPromo =
+    seniorPromoResult?.code === normalizedSeniorDiscountCode
+      ? seniorPromoResult
+      : null;
 
   const documentFile = checkoutData.file || null;
   const documentFileName = checkoutData.fileName || "No file selected";
@@ -305,15 +330,28 @@ export default function Checkout() {
   const documentFeeDisplay = documentFeeInfo.display;
 
   const systemFee = formatMoney(SYSTEM_FEE_AMOUNT);
-  const totalAmount =
+  const totalBeforeDiscount =
     documentFeeInfo.type === "varies"
       ? SYSTEM_FEE_AMOUNT
       : documentFeeInfo.amount + SYSTEM_FEE_AMOUNT;
 
+  const seniorDiscountAmount = appliedSeniorPromo
+    ? Number(appliedSeniorPromo.discount_amount || 0)
+    : 0;
+
+  const totalAmount = Math.max(totalBeforeDiscount - seniorDiscountAmount, 0);
   const totalAmountForDatabase = formatMoney(totalAmount);
+  const discountAmountForDatabase = formatMoney(seniorDiscountAmount);
+  const totalBeforeDiscountForDisplay = formatMoney(totalBeforeDiscount);
+  const isFullyWaivedBySeniorDiscount =
+    appliedSeniorPromo && Number(totalAmountForDatabase) <= 0;
+
+  const isOnlinePayment =
+    !isFullyWaivedBySeniorDiscount &&
+    (paymentMethod === "GCash" || paymentMethod === "PayMaya");
 
   const totalAmountDisplay =
-    documentFeeInfo.type === "varies"
+    documentFeeInfo.type === "varies" && !appliedSeniorPromo
       ? `Varies + ₱${systemFee} system fee`
       : `₱${totalAmountForDatabase}`;
 
@@ -360,6 +398,7 @@ export default function Checkout() {
   })();
 
   const paymentMethodForDatabase = (() => {
+    if (isFullyWaivedBySeniorDiscount) return "None";
     if (paymentMethod === "GCash") return "GCash";
     if (paymentMethod === "PayMaya") return "PayMaya";
     if (paymentMethod === "Onsite Payment") return "Cash";
@@ -419,6 +458,74 @@ export default function Checkout() {
     setPaymentProofName(selectedFile.name);
   };
 
+  const handleSeniorDiscountCodeChange = (event) => {
+    setSeniorDiscountCode(event.target.value.toUpperCase());
+    setSeniorPromoResult(null);
+    setMessage("");
+    setMessageType("");
+  };
+
+  const handleSeniorBirthDateChange = (event) => {
+    setSeniorBeneficiaryBirthDate(event.target.value);
+    setSeniorPromoResult(null);
+    setMessage("");
+    setMessageType("");
+  };
+
+  const handleApplySeniorDiscount = async () => {
+    if (!normalizedSeniorDiscountCode) {
+      showMessage("Enter a senior discount or waiver code first.", "error");
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      navigate("/signin");
+      return;
+    }
+
+    try {
+      setIsCheckingPromo(true);
+      setSeniorPromoResult(null);
+      setMessage("");
+      setMessageType("");
+
+      const res = await fetch(`${API_BASE_URL}/api/promo-codes/validate-senior`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          code: normalizedSeniorDiscountCode,
+          document_type_id: selectedDoc.id,
+          document_fee: documentFee,
+          system_fee: systemFee,
+          total_amount_before_discount: formatMoney(totalBeforeDiscount),
+          form_data: checkoutData.formData || {},
+          senior_beneficiary_birth_date: seniorBeneficiaryBirthDate || null,
+          selected_document_name: checkoutData.selectedDocName,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        showMessage(data.message || "Senior discount code could not be applied.", "error");
+        return;
+      }
+
+      setSeniorPromoResult(data.discount || null);
+      showMessage(data.message || "Senior discount applied.", "success");
+    } catch (error) {
+      console.error("SENIOR DISCOUNT VALIDATION ERROR:", error);
+      showMessage("Cannot validate senior discount code. Please check your backend.", "error");
+    } finally {
+      setIsCheckingPromo(false);
+    }
+  };
+
   const renderApplicantFields = () => {
     const fields = checkoutData.formData || {};
     const entries = Object.entries(fields);
@@ -458,6 +565,10 @@ export default function Checkout() {
 
     if (!selectedDoc.id) {
       return "Document type was not detected. Please go back and select the document again.";
+    }
+
+    if (normalizedSeniorDiscountCode && !appliedSeniorPromo) {
+      return "Please click Apply Senior Discount Code before finalizing the request.";
     }
 
     if (isOnlinePayment && !paymentReference.trim()) {
@@ -502,8 +613,14 @@ export default function Checkout() {
 
       requestData.append("document_fee", documentFee);
       requestData.append("system_fee", systemFee);
+      requestData.append("discount_amount", discountAmountForDatabase);
       requestData.append("total_amount", totalAmountForDatabase);
       requestData.append("amount_due", totalAmountForDatabase);
+      requestData.append("senior_discount_code", normalizedSeniorDiscountCode);
+      requestData.append(
+        "senior_beneficiary_birth_date",
+        seniorBeneficiaryBirthDate || ""
+      );
 
       requestData.append(
         "notes",
@@ -514,6 +631,15 @@ export default function Checkout() {
           parent_document: selectedDoc.parentTitle || null,
           category: selectedDoc.category || checkoutData.category,
           fields: checkoutData.formData || {},
+          senior_discount_code: normalizedSeniorDiscountCode || null,
+          senior_discount_applied: Boolean(appliedSeniorPromo),
+          senior_discount_description: appliedSeniorPromo?.description || null,
+          senior_discount_type: appliedSeniorPromo?.discount_type || null,
+          senior_discount_value: appliedSeniorPromo?.discount_value || null,
+          senior_discount_reason: appliedSeniorPromo?.reason || null,
+          senior_beneficiary_birth_date: seniorBeneficiaryBirthDate || null,
+          senior_eligibility_source: appliedSeniorPromo?.senior_eligibility?.source || null,
+          senior_eligibility_age: appliedSeniorPromo?.senior_eligibility?.age || null,
           payment_method: paymentMethod,
           payment_method_for_database: paymentMethodForDatabase,
           payment_reference_number: isOnlinePayment
@@ -522,6 +648,8 @@ export default function Checkout() {
           document_fee: documentFee,
           document_fee_display: documentFeeDisplay,
           system_fee: systemFee,
+          discount_amount: discountAmountForDatabase,
+          total_before_discount: totalBeforeDiscountForDisplay,
           total_amount: totalAmountForDatabase,
           total_amount_display: totalAmountDisplay,
           amount_due: totalAmountForDatabase,
@@ -530,8 +658,10 @@ export default function Checkout() {
           uploaded_requirement_file: documentFileName,
           payment_proof_file: paymentProofName || null,
           business_rule:
-            "System fee is required for every request, even when the document fee is free.",
-          payment_status_note: isOnlinePayment
+            "Senior discount or waiver is applied only after the system verifies a valid senior birthdate and an active discount code.",
+          payment_status_note: isFullyWaivedBySeniorDiscount
+            ? "Senior discount or waiver fully covered the payment. Official receipt is generated after system verification."
+            : isOnlinePayment
             ? "Payment proof submitted. Payment is pending admin verification."
             : "Payment will be completed onsite and confirmed by barangay staff.",
           security_note:
@@ -566,7 +696,9 @@ export default function Checkout() {
       localStorage.removeItem("paymentData");
 
       showMessage(
-        "Request submitted successfully! Payment is pending verification.",
+        isFullyWaivedBySeniorDiscount
+          ? "Request submitted successfully! Senior discount or waiver was applied."
+          : "Request submitted successfully! Payment is pending verification.",
         "success"
       );
 
@@ -647,6 +779,50 @@ export default function Checkout() {
                 <span className="payment-badge">{paymentMethod}</span>
               </p>
 
+              <div className="senior-checkout-card">
+                <h3>Senior Discount Code</h3>
+                <p>
+                  Optional. The code works only when the requester or the person named in the document is verified as 60 years old or above.
+                </p>
+
+                <div className="senior-checkout-grid">
+                  <div className="form-group">
+                    <label>Code</label>
+                    <input
+                      type="text"
+                      value={seniorDiscountCode}
+                      onChange={handleSeniorDiscountCodeChange}
+                      placeholder="Example: SENIOR20"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Senior Beneficiary Birthdate</label>
+                    <input
+                      type="date"
+                      value={seniorBeneficiaryBirthDate}
+                      max={seniorBirthDateMax}
+                      onChange={handleSeniorBirthDateChange}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="secondary-btn senior-apply-btn"
+                  onClick={handleApplySeniorDiscount}
+                  disabled={isCheckingPromo || !normalizedSeniorDiscountCode}
+                >
+                  {isCheckingPromo ? "Checking Code..." : "Apply Senior Discount Code"}
+                </button>
+
+                {appliedSeniorPromo && (
+                  <p className="senior-discount-success">
+                    Applied: {appliedSeniorPromo.description || appliedSeniorPromo.code}. Discount: ₱{discountAmountForDatabase}.
+                  </p>
+                )}
+              </div>
+
               <div className="amount-box">
                 <p>Document Fee</p>
                 <h3>{documentFeeDisplay}</h3>
@@ -654,16 +830,34 @@ export default function Checkout() {
                 <p className="amount-label-gap">System Fee</p>
                 <h3>₱{systemFee}</h3>
 
+                {appliedSeniorPromo && (
+                  <>
+                    <p className="amount-label-gap">Senior Discount / Waiver</p>
+                    <h3>- ₱{discountAmountForDatabase}</h3>
+
+                    <p className="amount-label-gap">Total Before Discount</p>
+                    <h3>₱{totalBeforeDiscountForDisplay}</h3>
+                  </>
+                )}
+
                 <p className="amount-label-gap">Total Amount to Pay</p>
                 <h3>{totalAmountDisplay}</h3>
               </div>
 
               <p className="payment-note">
-                System fee is required for every request, even when the document
-                fee is free.
+                Senior discounts and waivers are accepted only when the system verifies a valid senior citizen birthdate.
               </p>
 
-              {isOnlinePayment ? (
+              {isFullyWaivedBySeniorDiscount ? (
+                <div className="payment-instructions waived-payment-box">
+                  <p>
+                    <strong>Payment Requirement:</strong> Fully waived by senior discount or waiver code.
+                  </p>
+                  <p className="payment-note">
+                    No online payment proof is required for this request.
+                  </p>
+                </div>
+              ) : isOnlinePayment ? (
                 <div className="payment-instructions">
                   <p>
                     <strong>{paymentMethod} Account Name:</strong>{" "}
@@ -768,6 +962,17 @@ export default function Checkout() {
                 <strong>System Fee:</strong> ₱{systemFee}
               </p>
 
+              {appliedSeniorPromo && (
+                <>
+                  <p>
+                    <strong>Senior Discount Code:</strong> {appliedSeniorPromo.code}
+                  </p>
+                  <p>
+                    <strong>Senior Discount:</strong> - ₱{discountAmountForDatabase}
+                  </p>
+                </>
+              )}
+
               <p>
                 <strong>Total Amount:</strong> {totalAmountDisplay}
               </p>
@@ -775,7 +980,9 @@ export default function Checkout() {
               <p>
                 <strong>Status:</strong>{" "}
                 <span className="pending-status">
-                  {isOnlinePayment
+                  {isFullyWaivedBySeniorDiscount
+                    ? "Payment Waived by Senior Discount"
+                    : isOnlinePayment
                     ? "Payment Pending Admin Verification"
                     : "For Onsite Payment Confirmation"}
                 </span>

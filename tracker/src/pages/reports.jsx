@@ -107,6 +107,11 @@ export default function Reports() {
               </div>
 
               <div className="report-card">
+                <p>Ready for Pickup</p>
+                <h2>{summary.ready_for_pickup_requests || 0}</h2>
+              </div>
+
+              <div className="report-card">
                 <p>Completed Requests</p>
                 <h2>{summary.completed_requests}</h2>
               </div>

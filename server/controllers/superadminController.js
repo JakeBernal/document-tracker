@@ -1,3 +1,4 @@
+const bcrypt = require("bcrypt");
 const db = require("../config/db");
 
 const query = (sql, params = []) => {
@@ -76,6 +77,25 @@ const cleanNullable = (value) => {
   return value;
 };
 
+const cleanDateOrNull = (value) => {
+  if (value === undefined || value === null) return null;
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  // MySQL DATE columns need YYYY-MM-DD.
+  // The mysql driver may return DATE values as ISO strings when sent back by the frontend.
+  const dateOnlyMatch = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (dateOnlyMatch) return dateOnlyMatch[1];
+
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  return null;
+};
+
 const cleanNumber = (value, fallback = 0) => {
   if (value === undefined || value === null || value === "") return fallback;
   const parsed = Number(value);
@@ -130,6 +150,12 @@ exports.updateUserRole = async (req, res) => {
       return res.status(400).json({ message: "Invalid role." });
     }
 
+    if (String(req.user.id) === String(id) && role !== "superadmin") {
+      return res.status(400).json({
+        message: "You cannot remove your own superadmin access while logged in.",
+      });
+    }
+
     const userRows = await query("SELECT id, role FROM users WHERE id = ?", [id]);
 
     if (userRows.length === 0) {
@@ -155,6 +181,258 @@ exports.updateUserRole = async (req, res) => {
     return res.json({ message: "User role updated successfully." });
   } catch (err) {
     console.error("SUPERADMIN UPDATE USER ROLE ERROR:", err);
+    return res.status(500).json({
+      message: "Database error.",
+      error: err.message,
+    });
+  }
+};
+
+
+exports.getStats = async (req, res) => {
+  try {
+    const userStatsRows = await query(`
+      SELECT
+        COUNT(*) AS total_users,
+        SUM(u.role = 'citizen') AS total_citizens,
+        SUM(u.role = 'admin') AS total_admins,
+        SUM(u.role = 'superadmin') AS total_superadmins,
+        SUM(CASE
+          WHEN u.role = 'citizen' AND cp.verification_status = 'Fully Verified'
+          THEN 1 ELSE 0
+        END) AS fully_verified_citizens,
+        SUM(CASE
+          WHEN u.role = 'citizen' AND (cp.verification_status IS NULL OR cp.verification_status = 'Not Verified')
+          THEN 1 ELSE 0
+        END) AS not_verified_citizens
+      FROM users u
+      LEFT JOIN citizen_profiles cp ON cp.user_id = u.id
+    `);
+
+    const requestStatsRows = await query(`
+      SELECT
+        COUNT(*) AS total_requests,
+        SUM(status = 'Pending') AS pending,
+        SUM(status = 'Processing') AS processing,
+        SUM(status = 'Needs More Info') AS needs_more_info,
+        SUM(status = 'Rejected') AS rejected,
+        SUM(status = 'Approved') AS approved,
+        SUM(status = 'Ready for Pickup') AS ready_for_pickup,
+        SUM(status = 'Completed') AS completed,
+        COALESCE(SUM(CASE WHEN payment_status = 'Paid' THEN total_amount ELSE 0 END), 0) AS total_revenue
+      FROM requests
+    `);
+
+    const feedbackStatsRows = await query(`
+      SELECT
+        COUNT(*) AS total_feedback,
+        COALESCE(AVG(rating), 0) AS avg_rating
+      FROM feedback
+    `);
+
+    const promoStatsRows = await query(`
+      SELECT
+        COUNT(*) AS total_promos,
+        COALESCE(SUM(is_active = 1), 0) AS active_promos
+      FROM promo_codes
+    `);
+
+    const recentActivity = await query(`
+      SELECT
+        r.id,
+        r.status,
+        r.payment_status,
+        r.total_amount,
+        r.created_at,
+        r.updated_at,
+        u.full_name AS citizen_name,
+        u.email,
+        dt.name AS document_name
+      FROM requests r
+      LEFT JOIN users u ON u.id = r.user_id
+      LEFT JOIN document_types dt ON dt.id = r.document_type_id
+      ORDER BY r.updated_at DESC, r.created_at DESC
+      LIMIT 8
+    `);
+
+    return res.json({
+      user_stats: userStatsRows[0] || {},
+      request_stats: requestStatsRows[0] || {},
+      feedback_stats: feedbackStatsRows[0] || {},
+      promo_stats: promoStatsRows[0] || {},
+      recent_activity: recentActivity,
+    });
+  } catch (err) {
+    console.error("SUPERADMIN GET STATS ERROR:", err);
+    return res.status(500).json({
+      message: "Database error.",
+      error: err.message,
+    });
+  }
+};
+
+exports.createAdminUser = async (req, res) => {
+  try {
+    const fullName = String(req.body.full_name || "").trim();
+    const email = String(req.body.email || "").trim().toLowerCase();
+    const password = String(req.body.password || "");
+    const role = req.body.role || "admin";
+
+    if (!fullName || !email || !password) {
+      return res.status(400).json({ message: "Full name, email, and password are required." });
+    }
+
+    if (!allowedRoles.includes(role) || role === "citizen") {
+      return res.status(400).json({ message: "Only admin or superadmin accounts can be created here." });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: "Please enter a valid email address." });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters." });
+    }
+
+    const existing = await query("SELECT id FROM users WHERE email = ? LIMIT 1", [email]);
+
+    if (existing.length > 0) {
+      return res.status(400).json({ message: "Email already exists." });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    const result = await query(
+      "INSERT INTO users (full_name, email, password, role) VALUES (?, ?, ?, ?)",
+      [fullName, email, hashedPassword, role]
+    );
+
+    return res.status(201).json({
+      message: `${role === "superadmin" ? "Superadmin" : "Admin"} account created successfully.`,
+      user_id: result.insertId,
+    });
+  } catch (err) {
+    console.error("SUPERADMIN CREATE ADMIN ERROR:", err);
+    return res.status(500).json({
+      message: "Database error.",
+      error: err.message,
+    });
+  }
+};
+
+exports.deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (String(req.user.id) === String(id)) {
+      return res.status(400).json({ message: "You cannot delete your own account while logged in." });
+    }
+
+    const userRows = await query("SELECT id, full_name, role FROM users WHERE id = ? LIMIT 1", [id]);
+
+    if (userRows.length === 0) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    const targetUser = userRows[0];
+
+    if (targetUser.role === "superadmin") {
+      const countRows = await query("SELECT COUNT(*) AS total_superadmins FROM users WHERE role = 'superadmin'");
+
+      if (Number(countRows[0]?.total_superadmins || 0) <= 1) {
+        return res.status(400).json({ message: "You cannot delete the last superadmin account." });
+      }
+    }
+
+    const requestRows = await query("SELECT id FROM requests WHERE user_id = ?", [id]);
+    const requestIds = requestRows.map((row) => row.id);
+
+    if (requestIds.length > 0) {
+      await query("DELETE FROM feedback WHERE request_id IN (?)", [requestIds]);
+      await query("DELETE FROM request_messages WHERE request_id IN (?)", [requestIds]);
+      await query("DELETE FROM appointments WHERE request_id IN (?)", [requestIds]);
+      await query("DELETE FROM receipts WHERE request_id IN (?)", [requestIds]);
+      await query("DELETE FROM uploads WHERE request_id IN (?)", [requestIds]);
+      await query("DELETE FROM notifications WHERE request_id IN (?)", [requestIds]);
+      await query("DELETE FROM requests WHERE id IN (?)", [requestIds]);
+    }
+
+    await query("DELETE FROM feedback WHERE user_id = ?", [id]);
+    await query("DELETE FROM request_messages WHERE sender_id = ?", [id]);
+    await query("DELETE FROM notifications WHERE user_id = ?", [id]);
+    await query("DELETE FROM citizen_profiles WHERE user_id = ?", [id]);
+    await query("DELETE FROM users WHERE id = ?", [id]);
+
+    return res.json({ message: "User account and related records deleted successfully." });
+  } catch (err) {
+    console.error("SUPERADMIN DELETE USER ERROR:", err);
+    return res.status(500).json({
+      message: "Database error.",
+      error: err.message,
+    });
+  }
+};
+
+// ================= SUPERADMIN: REQUEST MANAGEMENT =================
+exports.getRequests = async (req, res) => {
+  try {
+    const requests = await query(`
+      SELECT
+        r.*,
+        u.full_name AS citizen_name,
+        u.email AS citizen_email,
+        cp.verification_status AS citizen_verification_status,
+        dt.name AS document_name,
+        (
+          SELECT file_path FROM uploads
+          WHERE request_id = r.id AND upload_type = 'requirement'
+          ORDER BY id DESC LIMIT 1
+        ) AS requirement_file_path,
+        (
+          SELECT file_path FROM uploads
+          WHERE request_id = r.id AND upload_type = 'payment_proof'
+          ORDER BY id DESC LIMIT 1
+        ) AS payment_proof_file_path,
+        (
+          SELECT file_path FROM uploads
+          WHERE request_id = r.id AND upload_type = 'released_document'
+          ORDER BY id DESC LIMIT 1
+        ) AS released_document_file_path,
+        a.appointment_date,
+        a.appointment_time,
+        a.status AS appointment_status
+      FROM requests r
+      LEFT JOIN users u ON u.id = r.user_id
+      LEFT JOIN citizen_profiles cp ON cp.user_id = u.id
+      LEFT JOIN document_types dt ON dt.id = r.document_type_id
+      LEFT JOIN appointments a ON a.request_id = r.id
+      ORDER BY r.created_at DESC, r.id DESC
+    `);
+
+    const formattedRequests = requests.map((request) => {
+      const formData = safeJsonParse(request.form_data);
+
+      return {
+        ...request,
+        form_data: formData,
+        document_name:
+          request.document_name ||
+          formData.document_name ||
+          formData.parent_document ||
+          "Document Request",
+        person_named_in_document:
+          formData.person_named_in_document ||
+          formData.request_subject_name ||
+          null,
+        person_named_rows: formData.person_named_rows || [],
+      };
+    });
+
+    return res.json({ requests: formattedRequests });
+  } catch (err) {
+    console.error("SUPERADMIN GET REQUESTS ERROR:", err);
     return res.status(500).json({
       message: "Database error.",
       error: err.message,
@@ -419,10 +697,39 @@ exports.deleteDocumentType = async (req, res) => {
 // ================= SUPERADMIN: PROMO CODES =================
 exports.getPromoCodes = async (req, res) => {
   try {
-    const promoCodes = await query("SELECT * FROM promo_codes ORDER BY created_at DESC");
+    const promoCodes = await query(`
+      SELECT
+        id,
+        code,
+        description,
+        discount_type,
+        discount_value,
+        is_active,
+        DATE_FORMAT(start_date, '%Y-%m-%d') AS start_date,
+        DATE_FORMAT(end_date, '%Y-%m-%d') AS end_date,
+        created_at
+      FROM promo_codes
+      ORDER BY created_at DESC
+    `);
+
     return res.json({ promo_codes: promoCodes });
   } catch (err) {
     console.error("SUPERADMIN GET PROMOS ERROR:", err);
+
+    if (err.code === "ER_NO_SUCH_TABLE") {
+      return res.status(500).json({
+        message: "Promo code table is missing. Please run the promo code SQL repair file.",
+        error: err.message,
+      });
+    }
+
+    if (err.code === "ER_BAD_FIELD_ERROR") {
+      return res.status(500).json({
+        message: "Promo code table columns are incomplete. Please run the promo code SQL repair file.",
+        error: err.message,
+      });
+    }
+
     return res.status(500).json({ message: "Database error.", error: err.message });
   }
 };
@@ -459,8 +766,8 @@ exports.createPromoCode = async (req, res) => {
         discount_type || "fixed",
         cleanNumber(discount_value),
         is_active === false || is_active === 0 ? 0 : 1,
-        cleanNullable(start_date),
-        cleanNullable(end_date),
+        cleanDateOrNull(start_date),
+        cleanDateOrNull(end_date),
       ]
     );
 
@@ -470,6 +777,25 @@ exports.createPromoCode = async (req, res) => {
     });
   } catch (err) {
     console.error("SUPERADMIN CREATE PROMO ERROR:", err);
+
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(400).json({ message: "This discount and waiver code already exists." });
+    }
+
+    if (err.code === "ER_NO_SUCH_TABLE") {
+      return res.status(500).json({
+        message: "Promo code table is missing. Please run the promo code SQL repair file.",
+        error: err.message,
+      });
+    }
+
+    if (err.code === "ER_BAD_FIELD_ERROR") {
+      return res.status(500).json({
+        message: "Promo code table columns are incomplete. Please run the promo code SQL repair file.",
+        error: err.message,
+      });
+    }
+
     return res.status(500).json({ message: "Database error.", error: err.message });
   }
 };
@@ -509,8 +835,8 @@ exports.updatePromoCode = async (req, res) => {
         discount_type || null,
         discount_value === undefined ? null : cleanNumber(discount_value),
         is_active === undefined ? null : is_active ? 1 : 0,
-        cleanNullable(start_date),
-        cleanNullable(end_date),
+        cleanDateOrNull(start_date),
+        cleanDateOrNull(end_date),
         id,
       ]
     );
@@ -522,6 +848,32 @@ exports.updatePromoCode = async (req, res) => {
     return res.json({ message: "Promo code updated successfully." });
   } catch (err) {
     console.error("SUPERADMIN UPDATE PROMO ERROR:", err);
+
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(400).json({ message: "This discount and waiver code already exists." });
+    }
+
+    if (err.code === "ER_TRUNCATED_WRONG_VALUE" || err.code === "ER_TRUNCATED_WRONG_VALUE_FOR_FIELD") {
+      return res.status(400).json({
+        message: "Invalid date value. Please use a valid start date and end date.",
+        error: err.message,
+      });
+    }
+
+    if (err.code === "ER_NO_SUCH_TABLE") {
+      return res.status(500).json({
+        message: "Promo code table is missing. Please run the promo code SQL repair file.",
+        error: err.message,
+      });
+    }
+
+    if (err.code === "ER_BAD_FIELD_ERROR") {
+      return res.status(500).json({
+        message: "Promo code table columns are incomplete. Please run the promo code SQL repair file.",
+        error: err.message,
+      });
+    }
+
     return res.status(500).json({ message: "Database error.", error: err.message });
   }
 };

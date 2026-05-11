@@ -341,3 +341,115 @@
   .sa-form-grid { grid-template-columns: 1fr; }
   .sa-shortcut-row { flex-direction: column; }
 }
+
+/* ── ADDED REQUEST MANAGEMENT IMPROVEMENTS ── */
+.sa-stat-card.gray h2,
+.sa-stat-card.gray p {
+  color: #374151;
+}
+
+.sa-stat-card.gray {
+  border-top: 4px solid #6b7280;
+}
+
+.sa-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.sa-panel-header.stackable {
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.sa-muted {
+  color: #6b7280;
+  font-size: 14px;
+  margin-top: 4px;
+  margin-bottom: 18px;
+}
+
+.sa-filter-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.sa-search-input {
+  min-width: 320px;
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid #cfd4dc;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #ffffff;
+  outline: none;
+}
+
+.sa-search-input:focus {
+  border-color: #1e3a8a;
+  box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
+}
+
+.request-management-table th,
+.request-management-table td {
+  vertical-align: top;
+  min-width: 110px;
+}
+
+.request-management-table th:nth-child(2),
+.request-management-table td:nth-child(2) {
+  min-width: 210px;
+}
+
+.request-management-table th:nth-child(3),
+.request-management-table td:nth-child(3) {
+  min-width: 210px;
+}
+
+.sa-subtext {
+  display: block;
+  margin-top: 3px;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.sa-mini-badge {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sa-mini-badge.verified {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.sa-mini-badge.unverified {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.status-select.pending { background: #fffbeb; color: #92400e; }
+.status-select.processing { background: #eff6ff; color: #1e40af; }
+.status-select.needs-more-info { background: #fff7ed; color: #c2410c; }
+.status-select.rejected { background: #fef2f2; color: #b91c1c; }
+.status-select.approved { background: #f0fdf4; color: #166534; }
+.status-select.ready-for-pickup { background: #eef2ff; color: #3730a3; }
+.status-select.completed { background: #ecfdf5; color: #065f46; }
+
+@media (max-width: 650px) {
+  .sa-search-input {
+    min-width: 100%;
+  }
+
+  .sa-filter-row .sa-select {
+    width: 100%;
+  }
+}

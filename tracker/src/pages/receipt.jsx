@@ -348,6 +348,33 @@ export default function Receipt() {
                 <strong>- {formatAmount(receipt.discount_amount)}</strong>
               </div>
 
+              {(receipt.senior_discount_code || receipt.senior_discount_reason) && (
+                <>
+                  <div className="receipt-row">
+                    <span>Senior Discount Code</span>
+                    <strong>{receipt.senior_discount_code || "—"}</strong>
+                  </div>
+
+                  <div className="receipt-row">
+                    <span>Senior Discount Details</span>
+                    <strong>
+                      {receipt.senior_discount_description ||
+                        receipt.senior_discount_reason ||
+                        "Verified senior citizen discount"}
+                    </strong>
+                  </div>
+
+                  <div className="receipt-row">
+                    <span>Senior Eligibility</span>
+                    <strong>
+                      {receipt.senior_eligibility?.source
+                        ? `${receipt.senior_eligibility.source} | Age: ${receipt.senior_eligibility.age}`
+                        : receipt.senior_beneficiary_birth_date || "Verified"}
+                    </strong>
+                  </div>
+                </>
+              )}
+
               <div className="receipt-row total">
                 <span>Total Amount</span>
                 <strong>{formatAmount(receipt.total_amount)}</strong>

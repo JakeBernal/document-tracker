@@ -31,6 +31,13 @@ router.put(
 
 router.get("/appointments/my", verifyToken, requestController.getMyAppointments);
 
+router.post(
+  "/promo-codes/validate-senior",
+  verifyToken,
+  requestController.validateSeniorDiscountCode
+);
+
+
 // ================= ADMIN AND SUPERADMIN ROUTES =================
 router.get(
   "/admin/requests",

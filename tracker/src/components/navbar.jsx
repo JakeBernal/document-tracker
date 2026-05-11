@@ -93,7 +93,8 @@ export default function Navbar() {
 
   const goToDashboard = () => {
     if (!user) return goTo("/signin");
-    if (isAdminUser) return goTo("/admin");
+    if (isSuperadmin) return goTo("/superadmin");
+    if (isAdmin) return goTo("/admin");
     goTo("/citizen");
   };
 
@@ -211,7 +212,7 @@ export default function Navbar() {
                   <button className="dropdown-item" onClick={goToDashboard}>
                     <span className="menu-icon">{Icon.dashboard}</span>
                     <span className="menu-text">
-                      {isAdminUser ? "Admin Dashboard" : "Citizen Dashboard"}
+                      {isSuperadmin ? "Superadmin Dashboard" : isAdmin ? "Admin Dashboard" : "Citizen Dashboard"}
                     </span>
                   </button>
 
@@ -236,6 +237,13 @@ export default function Navbar() {
 
                   {isAdminUser && (
                     <>
+                      {isSuperadmin && (
+                        <button className="dropdown-item" onClick={() => goTo("/superadmin")}>
+                          <span className="menu-icon">{Icon.dashboard}</span>
+                          <span className="menu-text">Superadmin Panel</span>
+                        </button>
+                      )}
+
                       <button className="dropdown-item" onClick={() => goTo("/admin")}>
                         <span className="menu-icon">{Icon.dashboard}</span>
                         <span className="menu-text">Manage Requests</span>

@@ -17,6 +17,17 @@ export default function Admin() {
   const [activeTab, setActiveTab] = useState("Requests");
   const [searchTerm, setSearchTerm] = useState("");
 
+  const getTodayDateValue = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  };
+
+  const todayDateValue = getTodayDateValue();
+
   const isAdminUser = (storedUser) => {
     return storedUser?.role === "admin" || storedUser?.role === "superadmin";
   };
@@ -244,6 +255,11 @@ export default function Admin() {
 
     if (!pickupDate || !pickupTime) {
       alert("Please select pickup date and pickup time.");
+      return;
+    }
+
+    if (pickupDate < todayDateValue) {
+      alert("Pickup schedule cannot be set to yesterday or any past date.");
       return;
     }
 
@@ -1147,6 +1163,7 @@ export default function Admin() {
                   <div className="admin-actions horizontal">
                     <input
                       type="date"
+                      min={todayDateValue}
                       value={pickupInputs[request.id]?.pickup_date || ""}
                       onChange={(e) =>
                         updatePickupInput(

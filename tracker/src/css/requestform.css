@@ -548,3 +548,58 @@
 .request-guard-actions .primary-btn {
   margin-top: 0;
 }
+
+/* SENIOR DISCOUNT SECTION */
+.senior-discount-card {
+  background: #f8fafc;
+  border: 1px solid #dbe3f0;
+  border-radius: 16px;
+  padding: 18px;
+  margin: 8px 0 20px;
+}
+
+.senior-discount-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.senior-discount-header h3 {
+  color: #1f3c88;
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+
+.senior-discount-header p {
+  color: #5b6474;
+  line-height: 1.5;
+  margin: 0;
+  font-size: 14px;
+}
+
+.senior-age-badge {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.senior-discount-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 700px) {
+  .senior-discount-header,
+  .senior-discount-grid {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+}

@@ -21,18 +21,25 @@ export default function RequestForm() {
   const [viewDocument, setViewDocument] = useState(false);
   const [zoomImage, setZoomImage] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState("");
+  const [seniorDiscountCode, setSeniorDiscountCode] = useState("");
+  const [seniorBeneficiaryBirthDate, setSeniorBeneficiaryBirthDate] = useState("");
 
   const MINIMUM_REQUEST_AGE = 18;
+  const SENIOR_CITIZEN_AGE = 60;
 
-  const getMinimumBirthDate = () => {
+  const getMaximumBirthDateForAge = (minimumAge) => {
     const today = new Date();
-    const minimumDate = new Date(
-      today.getFullYear() - MINIMUM_REQUEST_AGE,
+    const maximumDate = new Date(
+      today.getFullYear() - minimumAge,
       today.getMonth(),
       today.getDate()
     );
 
-    return minimumDate.toISOString().split("T")[0];
+    return maximumDate.toISOString().split("T")[0];
+  };
+
+  const getMinimumBirthDate = () => {
+    return getMaximumBirthDateForAge(MINIMUM_REQUEST_AGE);
   };
 
   const getAgeFromDate = (dateValue) => {
@@ -58,10 +65,18 @@ export default function RequestForm() {
     return age;
   };
 
-  const isAtLeastRequestAge = (dateValue) => {
+  const isAtLeastAge = (dateValue, minimumAge) => {
     const age = getAgeFromDate(dateValue);
 
-    return age !== null && age >= MINIMUM_REQUEST_AGE;
+    return age !== null && age >= minimumAge;
+  };
+
+  const isAtLeastRequestAge = (dateValue) => {
+    return isAtLeastAge(dateValue, MINIMUM_REQUEST_AGE);
+  };
+
+  const isSeniorAge = (dateValue) => {
+    return isAtLeastAge(dateValue, SENIOR_CITIZEN_AGE);
   };
 
   const normalizeFieldText = (value) => {
@@ -89,7 +104,43 @@ export default function RequestForm() {
     return field.type === "number" && (fieldName === "age" || fieldLabel === "age");
   };
 
+  const getSeniorDetectedFromForm = () => {
+    const birthDateFields = (selectedDoc.fields || []).filter((field) =>
+      isBirthDateField(field)
+    );
+
+    const detectedField = birthDateFields.find((field) =>
+      isSeniorAge(formData[field.name])
+    );
+
+    if (detectedField) {
+      return {
+        detected: true,
+        source: detectedField.label,
+        birthDate: formData[detectedField.name],
+        age: getAgeFromDate(formData[detectedField.name]),
+      };
+    }
+
+    if (seniorBeneficiaryBirthDate && isSeniorAge(seniorBeneficiaryBirthDate)) {
+      return {
+        detected: true,
+        source: "Senior beneficiary birthdate",
+        birthDate: seniorBeneficiaryBirthDate,
+        age: getAgeFromDate(seniorBeneficiaryBirthDate),
+      };
+    }
+
+    return {
+      detected: false,
+      source: "No senior birthdate detected in the request form yet",
+      birthDate: "",
+      age: null,
+    };
+  };
+
   const minimumBirthDate = getMinimumBirthDate();
+  const seniorBirthDateMax = getMaximumBirthDateForAge(SENIOR_CITIZEN_AGE);
 
   const [profileGuard, setProfileGuard] = useState({
     loading: true,
@@ -224,6 +275,8 @@ export default function RequestForm() {
     setFile(null);
     setFileName("");
     setPaymentMethod("");
+    setSeniorDiscountCode("");
+    setSeniorBeneficiaryBirthDate("");
     setMessage("");
     setViewDocument(false);
     setZoomImage(null);
@@ -312,6 +365,9 @@ export default function RequestForm() {
       file,
       fileName,
       paymentMethod: isAdmin ? "None" : paymentMethod,
+      seniorDiscountCode: seniorDiscountCode.trim().toUpperCase(),
+      seniorBeneficiaryBirthDate,
+      seniorEligibilityPreview: getSeniorDetectedFromForm(),
       amountDue: getAmountDue(),
       category: selectedDoc.category,
       processingTime: selectedDoc.time,
@@ -325,6 +381,9 @@ export default function RequestForm() {
         formData,
         fileName,
         paymentMethod: isAdmin ? "None" : paymentMethod,
+        seniorDiscountCode: seniorDiscountCode.trim().toUpperCase(),
+        seniorBeneficiaryBirthDate,
+        seniorEligibilityPreview: getSeniorDetectedFromForm(),
         amountDue: getAmountDue(),
         category: selectedDoc.category,
         processingTime: selectedDoc.time,
@@ -522,6 +581,52 @@ export default function RequestForm() {
                   )}
                 </div>
               ))}
+
+              {!isAdmin && (
+                <div className="senior-discount-card">
+                  <div className="senior-discount-header">
+                    <div>
+                      <h3>Senior Citizen Discount</h3>
+                      <p>
+                        Optional. Enter a valid discount or waiver code only when the requester or the person named in the document is a senior citizen.
+                      </p>
+                    </div>
+                    <span className="senior-age-badge">60+ only</span>
+                  </div>
+
+                  <div className="form-row senior-discount-grid">
+                    <div className="form-group">
+                      <label>Senior Discount / Waiver Code</label>
+                      <input
+                        type="text"
+                        value={seniorDiscountCode}
+                        onChange={(event) =>
+                          setSeniorDiscountCode(event.target.value.toUpperCase())
+                        }
+                        placeholder="Example: SENIOR20"
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Senior Beneficiary Birthdate</label>
+                      <input
+                        type="date"
+                        value={seniorBeneficiaryBirthDate}
+                        onChange={(event) =>
+                          setSeniorBeneficiaryBirthDate(event.target.value)
+                        }
+                        max={seniorBirthDateMax}
+                      />
+                    </div>
+                  </div>
+
+                  <p className="request-age-note">
+                    {getSeniorDetectedFromForm().detected
+                      ? `Senior eligibility detected from ${getSeniorDetectedFromForm().source}. Age: ${getSeniorDetectedFromForm().age}.`
+                      : "No senior discount will be applied unless a valid code is entered and senior eligibility is verified from the request birthdate or citizen profile birthdate."}
+                  </p>
+                </div>
+              )}
 
               <div className="form-group">
                 <label>

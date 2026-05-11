@@ -2,6 +2,7 @@ const db = require("../config/db");
 const { MINIMUM_CITIZEN_AGE, isAtLeastAge } = require("../utils/ageValidation");
 
 const SYSTEM_FEE_AMOUNT = 10;
+const SENIOR_CITIZEN_AGE = 60;
 
 const query = (sql, params = []) => {
   return new Promise((resolve, reject) => {
@@ -193,6 +194,15 @@ const normalizeDateOnly = (value) => {
   const year = parsedDate.getFullYear();
   const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
   const day = String(parsedDate.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const getTodayDateOnly = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 };
@@ -429,6 +439,213 @@ const validateRequestFormAgeFields = (parsedNotes) => {
   return { isValid: true };
 };
 
+const getAgeFromDateOnly = (dateValue) => {
+  const normalizedDate = normalizeDateOnly(dateValue);
+
+  if (!normalizedDate) return null;
+
+  const birthDate = new Date(`${normalizedDate}T00:00:00`);
+
+  if (Number.isNaN(birthDate.getTime())) return null;
+
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const birthdayHasPassed =
+    today.getMonth() > birthDate.getMonth() ||
+    (today.getMonth() === birthDate.getMonth() &&
+      today.getDate() >= birthDate.getDate());
+
+  if (!birthdayHasPassed) {
+    age -= 1;
+  }
+
+  return age;
+};
+
+const normalizePromoCode = (value) => {
+  return String(value || "").trim().toUpperCase();
+};
+
+const isPromoCodeActiveForToday = (promoCode) => {
+  if (!promoCode) return false;
+  if (Number(promoCode.is_active || 0) !== 1) return false;
+
+  const today = normalizeDateOnly(new Date());
+  const startDate = normalizeDateOnly(promoCode.start_date);
+  const endDate = normalizeDateOnly(promoCode.end_date);
+
+  if (startDate && today < startDate) return false;
+  if (endDate && today > endDate) return false;
+
+  return true;
+};
+
+const getPromoCodeByCode = async (code) => {
+  const normalizedCode = normalizePromoCode(code);
+
+  if (!normalizedCode) return null;
+
+  const rows = await query(
+    `SELECT id, code, description, discount_type, discount_value, is_active, start_date, end_date
+     FROM promo_codes
+     WHERE UPPER(code) = ?
+     LIMIT 1`,
+    [normalizedCode]
+  );
+
+  return rows[0] || null;
+};
+
+const buildSeniorEligibilityCandidates = (parsedNotes, citizenProfile) => {
+  const candidates = [];
+  const fields =
+    parsedNotes?.fields && typeof parsedNotes.fields === "object"
+      ? parsedNotes.fields
+      : {};
+
+  if (parsedNotes?.senior_beneficiary_birth_date) {
+    candidates.push({
+      source: "Senior beneficiary birthdate",
+      label: "Senior Beneficiary Birthdate",
+      birthDate: parsedNotes.senior_beneficiary_birth_date,
+    });
+  }
+
+  for (const [fieldName, fieldValue] of Object.entries(fields)) {
+    if (!fieldValue) continue;
+    if (!isBirthDateRequestField(fieldName)) continue;
+
+    candidates.push({
+      source: `Request form field: ${formatFieldLabel(fieldName)}`,
+      label: formatFieldLabel(fieldName),
+      birthDate: fieldValue,
+    });
+  }
+
+  if (citizenProfile?.date_of_birth) {
+    candidates.push({
+      source: "Citizen profile birthdate",
+      label: "Citizen Profile Birthdate",
+      birthDate: citizenProfile.date_of_birth,
+    });
+  }
+
+  return candidates
+    .map((candidate) => {
+      const normalizedBirthDate = normalizeDateOnly(candidate.birthDate);
+      const age = getAgeFromDateOnly(normalizedBirthDate);
+
+      return {
+        ...candidate,
+        birthDate: normalizedBirthDate,
+        age,
+      };
+    })
+    .filter((candidate) => candidate.birthDate && candidate.age !== null);
+};
+
+const getSeniorEligibility = (parsedNotes, citizenProfile) => {
+  const candidates = buildSeniorEligibilityCandidates(parsedNotes, citizenProfile);
+  const eligibleCandidate = candidates.find(
+    (candidate) => candidate.age >= SENIOR_CITIZEN_AGE
+  );
+
+  if (eligibleCandidate) {
+    return {
+      eligible: true,
+      source: eligibleCandidate.source,
+      label: eligibleCandidate.label,
+      birthDate: eligibleCandidate.birthDate,
+      age: eligibleCandidate.age,
+      minimumAge: SENIOR_CITIZEN_AGE,
+      candidates,
+    };
+  }
+
+  return {
+    eligible: false,
+    source: null,
+    label: null,
+    birthDate: null,
+    age: null,
+    minimumAge: SENIOR_CITIZEN_AGE,
+    candidates,
+  };
+};
+
+const computeDiscountFromPromo = (promoCode, totalBeforeDiscount) => {
+  const baseAmount = Number(totalBeforeDiscount || 0);
+  const discountValue = Number(promoCode?.discount_value || 0);
+
+  if (baseAmount <= 0) return 0;
+
+  if (promoCode.discount_type === "waiver") {
+    return baseAmount;
+  }
+
+  if (promoCode.discount_type === "percentage") {
+    const percentageDiscount = baseAmount * (discountValue / 100);
+    return Math.min(percentageDiscount, baseAmount);
+  }
+
+  return Math.min(discountValue, baseAmount);
+};
+
+const validateSeniorPromoApplication = async ({
+  code,
+  totalBeforeDiscount,
+  parsedNotes,
+  citizenProfile,
+}) => {
+  const normalizedCode = normalizePromoCode(code);
+
+  if (!normalizedCode) {
+    return {
+      applied: false,
+      discountAmount: 0,
+      normalizedCode: "",
+      seniorEligibility: getSeniorEligibility(parsedNotes, citizenProfile),
+    };
+  }
+
+  const promoCode = await getPromoCodeByCode(normalizedCode);
+
+  if (!promoCode) {
+    const error = new Error("Senior discount code was not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!isPromoCodeActiveForToday(promoCode)) {
+    const error = new Error("Senior discount code is inactive, expired, or not yet valid.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const seniorEligibility = getSeniorEligibility(parsedNotes, citizenProfile);
+
+  if (!seniorEligibility.eligible) {
+    const error = new Error(
+      "Senior discount code can only be used when the citizen profile birthdate or request form birthdate shows 60 years old or above."
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const discountAmount = computeDiscountFromPromo(promoCode, totalBeforeDiscount);
+  const totalAfterDiscount = Math.max(Number(totalBeforeDiscount || 0) - discountAmount, 0);
+
+  return {
+    applied: true,
+    promoCode,
+    normalizedCode,
+    discountAmount,
+    totalBeforeDiscount: Number(totalBeforeDiscount || 0),
+    totalAfterDiscount,
+    seniorEligibility,
+  };
+};
+
 const createNotification = async (userId, requestId, title, message) => {
   try {
     await query(
@@ -583,6 +800,89 @@ const upsertReceipt = async ({
   );
 };
 
+exports.validateSeniorDiscountCode = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const {
+      code,
+      document_type_id,
+      document_fee,
+      system_fee,
+      total_amount_before_discount,
+      form_data,
+      senior_beneficiary_birth_date,
+      selected_document_name,
+    } = req.body;
+
+    const normalizedCode = normalizePromoCode(code);
+
+    if (!normalizedCode) {
+      return res.status(400).json({
+        message: "Senior discount code is required.",
+      });
+    }
+
+    let citizenProfile = null;
+
+    if (req.user.role === "citizen") {
+      citizenProfile = await getCitizenProfile(userId);
+    }
+
+    const documentType = document_type_id
+      ? await getDocumentType(document_type_id)
+      : null;
+
+    const baseFeeDetails = calculateFees(
+      documentType || { fee: document_fee || 0 },
+      {
+        document_fee: document_fee || 0,
+        system_fee: system_fee || SYSTEM_FEE_AMOUNT,
+        discount_amount: 0,
+      }
+    );
+
+    const parsedNotes = {
+      document_name: selected_document_name || documentType?.name || "Document Request",
+      fields: form_data && typeof form_data === "object" ? form_data : {},
+      senior_beneficiary_birth_date: senior_beneficiary_birth_date || null,
+    };
+
+    const totalBeforeDiscount = toNumber(
+      total_amount_before_discount,
+      toNumber(baseFeeDetails.totalAmount, 0)
+    );
+
+    const promoApplication = await validateSeniorPromoApplication({
+      code: normalizedCode,
+      totalBeforeDiscount,
+      parsedNotes,
+      citizenProfile,
+    });
+
+    return res.json({
+      message: "Senior discount code applied successfully.",
+      discount: {
+        code: promoApplication.promoCode.code,
+        description: promoApplication.promoCode.description,
+        discount_type: promoApplication.promoCode.discount_type,
+        discount_value: Number(promoApplication.promoCode.discount_value || 0),
+        discount_amount: toMoney(promoApplication.discountAmount),
+        total_before_discount: toMoney(promoApplication.totalBeforeDiscount),
+        total_after_discount: toMoney(promoApplication.totalAfterDiscount),
+        reason: `Verified senior citizen discount using ${promoApplication.seniorEligibility.source}.`,
+        senior_eligibility: promoApplication.seniorEligibility,
+      },
+    });
+  } catch (err) {
+    console.error("VALIDATE SENIOR DISCOUNT ERROR:", err);
+
+    return res.status(err.statusCode || 500).json({
+      message: err.message || "Database error",
+      error: err.message,
+    });
+  }
+};
+
 exports.createRequest = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -678,11 +978,41 @@ exports.createRequest = async (req, res) => {
         parsedNotes.payment_method
     );
 
-    if (isDigitalPaymentMethod(finalPaymentMethod) && !paymentProofPath) {
-      return res.status(400).json({
-        message: `Proof of payment is required for ${finalPaymentMethod}.`,
-      });
-    }
+    const baseFeeDetails = calculateFees(documentType, {
+      document_fee:
+        getFirstNonEmpty(document_fee, parsedNotes.document_fee) || 0,
+      system_fee:
+        getFirstNonEmpty(system_fee, parsedNotes.system_fee) ||
+        SYSTEM_FEE_AMOUNT,
+      total_amount:
+        getFirstNonEmpty(total_amount, parsedNotes.total_amount, amount_due) ||
+        0,
+      amount_due:
+        getFirstNonEmpty(amount_due, parsedNotes.amount_due, total_amount) || 0,
+      discount_amount: 0,
+    });
+
+    const seniorDiscountCode = normalizePromoCode(
+      req.body.senior_discount_code ||
+        req.body.promo_code ||
+        parsedNotes.senior_discount_code ||
+        parsedNotes.promo_code
+    );
+
+    const parsedNotesForSeniorValidation = {
+      ...parsedNotes,
+      senior_beneficiary_birth_date:
+        req.body.senior_beneficiary_birth_date ||
+        parsedNotes.senior_beneficiary_birth_date ||
+        null,
+    };
+
+    const seniorPromoApplication = await validateSeniorPromoApplication({
+      code: seniorDiscountCode,
+      totalBeforeDiscount: baseFeeDetails.totalAmount,
+      parsedNotes: parsedNotesForSeniorValidation,
+      citizenProfile,
+    });
 
     const feeDetails = calculateFees(documentType, {
       document_fee:
@@ -695,9 +1025,29 @@ exports.createRequest = async (req, res) => {
         0,
       amount_due:
         getFirstNonEmpty(amount_due, parsedNotes.amount_due, total_amount) || 0,
-      discount_amount:
-        getFirstNonEmpty(discount_amount, parsedNotes.discount_amount) || 0,
+      discount_amount: seniorPromoApplication.discountAmount || 0,
     });
+
+    const isFullyWaivedBySeniorDiscount =
+      seniorPromoApplication.applied && Number(feeDetails.totalAmount) <= 0;
+
+    if (
+      !isFullyWaivedBySeniorDiscount &&
+      isDigitalPaymentMethod(finalPaymentMethod) &&
+      !paymentProofPath
+    ) {
+      return res.status(400).json({
+        message: `Proof of payment is required for ${finalPaymentMethod}.`,
+      });
+    }
+
+    const initialPaymentStatus = isFullyWaivedBySeniorDiscount ? "Waived" : "Unpaid";
+    const finalPaymentMethodForStorage = isFullyWaivedBySeniorDiscount
+      ? "None"
+      : finalPaymentMethod;
+    const initialReceiptNumber = isFullyWaivedBySeniorDiscount
+      ? generateReceiptNumber()
+      : null;
 
     const transactionNumber =
       parsedNotes.transaction_number ||
@@ -705,24 +1055,46 @@ exports.createRequest = async (req, res) => {
       generateTransactionNumber();
 
     const finalPaymentReference =
-      finalPaymentMethod === "Cash"
+      finalPaymentMethodForStorage === "Cash" ||
+      finalPaymentMethodForStorage === "None"
         ? null
         : payment_reference || parsedNotes.payment_reference_number || null;
 
     const enrichedNotes = {
-      ...parsedNotes,
+      ...parsedNotesForSeniorValidation,
       transaction_number: transactionNumber,
-      official_receipt_status: "Not yet generated",
-      payment_status_note:
-        "Payment is subject to admin or superadmin verification.",
+      official_receipt_status: isFullyWaivedBySeniorDiscount
+        ? "Generated through senior discount or waiver"
+        : "Not yet generated",
+      payment_status_note: isFullyWaivedBySeniorDiscount
+        ? "Payment was waived after senior citizen eligibility and discount code verification."
+        : "Payment is subject to admin or superadmin verification.",
       backend_fee_source: "document_types_plus_required_system_fee",
       business_rule:
-        "System fee is required for every request, even when the document fee is free.",
+        "Senior discount or waiver is applied only when a valid discount code and a verified senior birthdate are present.",
       document_fee: feeDetails.documentFee,
       system_fee: feeDetails.systemFee,
       discount_amount: feeDetails.discountAmount,
+      total_before_discount: baseFeeDetails.totalAmount,
       total_amount: feeDetails.totalAmount,
       amount_due: feeDetails.amountDue,
+      senior_discount_code: seniorPromoApplication.applied
+        ? seniorPromoApplication.promoCode.code
+        : null,
+      senior_discount_applied: seniorPromoApplication.applied,
+      senior_discount_description: seniorPromoApplication.applied
+        ? seniorPromoApplication.promoCode.description
+        : null,
+      senior_discount_type: seniorPromoApplication.applied
+        ? seniorPromoApplication.promoCode.discount_type
+        : null,
+      senior_discount_value: seniorPromoApplication.applied
+        ? Number(seniorPromoApplication.promoCode.discount_value || 0)
+        : 0,
+      senior_discount_reason: seniorPromoApplication.applied
+        ? `Verified senior citizen discount using ${seniorPromoApplication.seniorEligibility.source}.`
+        : null,
+      senior_eligibility: seniorPromoApplication.seniorEligibility,
       person_named_in_document: personNamedInfo.primary,
       person_named_rows: personNamedInfo.rows,
       request_subject_name: personNamedInfo.primary,
@@ -747,14 +1119,16 @@ exports.createRequest = async (req, res) => {
         notes,
         form_data
       )
-      VALUES (?, ?, 'Pending', 'Unpaid', ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, 'Pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const requestResult = await query(insertRequestSql, [
       userId,
       document_type_id,
-      finalPaymentMethod,
+      initialPaymentStatus,
+      finalPaymentMethodForStorage,
       finalPaymentReference,
+      initialReceiptNumber,
       feeDetails.amountDue,
       feeDetails.documentFee,
       feeDetails.systemFee,
@@ -766,6 +1140,19 @@ exports.createRequest = async (req, res) => {
     ]);
 
     const requestId = requestResult.insertId;
+
+    if (isFullyWaivedBySeniorDiscount) {
+      await upsertReceipt({
+        requestId,
+        receiptNumber: initialReceiptNumber,
+        documentFee: feeDetails.documentFee,
+        systemFee: feeDetails.systemFee,
+        discountAmount: feeDetails.discountAmount,
+        totalAmount: feeDetails.totalAmount,
+        paymentMethod: finalPaymentMethodForStorage,
+        paymentReference: null,
+      });
+    }
 
     if (requirementFilePath) {
       await query(
@@ -806,11 +1193,12 @@ exports.createRequest = async (req, res) => {
     );
 
     return res.status(201).json({
-      message:
-        "Request submitted successfully. Payment is pending admin verification.",
+      message: isFullyWaivedBySeniorDiscount
+        ? "Request submitted successfully. Senior discount or waiver was applied."
+        : "Request submitted successfully. Payment is pending admin verification.",
       requestId,
       transaction_number: transactionNumber,
-      payment_status: "Unpaid",
+      payment_status: initialPaymentStatus,
       amount_due: feeDetails.amountDue,
       document_fee: feeDetails.documentFee,
       system_fee: feeDetails.systemFee,
@@ -822,8 +1210,8 @@ exports.createRequest = async (req, res) => {
   } catch (err) {
     console.error("CREATE REQUEST ERROR:", err);
 
-    return res.status(500).json({
-      message: "Database error",
+    return res.status(err.statusCode || 500).json({
+      message: err.statusCode ? err.message : "Database error",
       error: err.message,
     });
   }
@@ -1538,6 +1926,21 @@ exports.setPickupAppointment = async (req, res) => {
       });
     }
 
+    const normalizedPickupDate = normalizeDateOnly(pickup_date);
+    const todayDate = getTodayDateOnly();
+
+    if (!normalizedPickupDate) {
+      return res.status(400).json({
+        message: "Pickup date is invalid.",
+      });
+    }
+
+    if (normalizedPickupDate < todayDate) {
+      return res.status(400).json({
+        message: "Pickup schedule cannot be set to yesterday or any past date.",
+      });
+    }
+
     const requestRows = await query(
       `SELECT r.user_id,
               u.full_name AS citizen_name,
@@ -1576,7 +1979,7 @@ exports.setPickupAppointment = async (req, res) => {
       `UPDATE requests
        SET pickup_date = ?, pickup_time = ?, status = 'Ready for Pickup'
        WHERE id = ?`,
-      [pickup_date, pickup_time, id]
+      [normalizedPickupDate, pickup_time, id]
     );
 
     const appointmentRows = await query(
@@ -1592,14 +1995,14 @@ exports.setPickupAppointment = async (req, res) => {
         `UPDATE appointments
          SET appointment_date = ?, appointment_time = ?, status = 'Rescheduled'
          WHERE request_id = ?`,
-        [pickup_date, pickup_time, id]
+        [normalizedPickupDate, pickup_time, id]
       );
     } else {
       await query(
         `INSERT INTO appointments
          (request_id, user_id, appointment_date, appointment_time, purpose, status)
          VALUES (?, ?, ?, ?, 'Document Pickup', 'Scheduled')`,
-        [id, userId, pickup_date, pickup_time]
+        [id, userId, normalizedPickupDate, pickup_time]
       );
     }
 
@@ -1607,13 +2010,13 @@ exports.setPickupAppointment = async (req, res) => {
       userId,
       id,
       "Pickup Schedule Set",
-      `Your document is ready for pickup on ${pickup_date} at ${pickup_time}.`
+      `Your document is ready for pickup on ${normalizedPickupDate} at ${pickup_time}.`
     );
 
     await notifyAdmins(
       id,
       "Pickup Schedule Set",
-      `${citizenName}'s ${documentName} under ${subjectName} pickup was scheduled on ${pickup_date} at ${pickup_time}.`
+      `${citizenName}'s ${documentName} under ${subjectName} pickup was scheduled on ${normalizedPickupDate} at ${pickup_time}.`
     );
 
     return res.json({

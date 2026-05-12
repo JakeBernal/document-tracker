@@ -42,7 +42,7 @@ function Contact() {
             </li>
             <li>
               <span className="footer-contact-label">Address</span>
-              Barangay Hall, Dagupan City, Pangasinan
+              Barangay Hall, Libsong west, Lingayen, Pangasinan
             </li>
             <li>
               <span className="footer-contact-label">Hours</span>

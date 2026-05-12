@@ -462,6 +462,13 @@
   font-family: inherit;
 }
 
+.request-action-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .edit-btn {
   background: #ffffff;
   color: #1e3a8a;
@@ -477,6 +484,29 @@
 
 .edit-btn:hover {
   background: #eef2ff;
+}
+
+.cancel-request-btn {
+  background: #ffffff;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  padding: 9px 13px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  transition: 0.2s ease;
+  font-family: inherit;
+}
+
+.cancel-request-btn:hover {
+  background: #fee2e2;
+}
+
+.cancel-request-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 /* =========================

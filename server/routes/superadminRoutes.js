@@ -31,8 +31,9 @@ router.post("/superadmin/users/create-admin", verifyToken, verifySuperadmin, cre
 router.put("/superadmin/users/:id/role", verifyToken, verifySuperadmin, updateUserRole);
 router.delete("/superadmin/users/:id", verifyToken, verifySuperadmin, deleteUser);
 
-// ================= REQUEST MANAGEMENT AND OVERRIDE DATA ONLY =================
-// Files are read-only for admin and superadmin. Wrong files must be corrected by the citizen after status is set to Needs More Info.
+// ================= REQUEST MANAGEMENT: READ-ONLY + DELETE ONLY =================
+// Superadmin may view and remove request records only.
+// PUT is intentionally kept as a guarded endpoint that returns 403, so manual/API edit attempts are blocked.
 router.get("/superadmin/requests", verifyToken, verifySuperadmin, getRequests);
 
 router.put(

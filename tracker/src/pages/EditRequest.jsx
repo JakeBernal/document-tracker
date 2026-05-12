@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Navbar from "../components/navbar";
 import { documentRequirements } from "../data/documentRequirements";
@@ -18,27 +18,6 @@ export default function EditRequest() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-
-  const paymentOptions = useMemo(
-    () => [
-      {
-        value: "GCash",
-        label: "GCash",
-        description: "Pay using GCash and upload proof during verification.",
-      },
-      {
-        value: "PayMaya",
-        label: "PayMaya",
-        description: "Pay using PayMaya and upload proof during verification.",
-      },
-      {
-        value: "Onsite Payment",
-        label: "Onsite Payment",
-        description: "Pay directly at the Barangay or LGU office.",
-      },
-    ],
-    []
-  );
 
   const dashboardPath = "/citizen";
 
@@ -78,10 +57,17 @@ export default function EditRequest() {
     return value;
   };
 
-  const normalizePaymentForDatabase = (value) => {
-    if (!value) return "None";
-    if (value === "Onsite Payment") return "Cash";
+  const getDisplayValue = (value, fallback = "—") => {
+    if (value === undefined || value === null || value === "") return fallback;
     return value;
+  };
+
+  const getPaymentStatusStyle = (status) => {
+    if (status === "Paid" || status === "Waived") {
+      return { background: "#d1fae5", color: "#065f46" };
+    }
+
+    return { background: "#fef3c7", color: "#92400e" };
   };
 
   const findDocumentDefinition = (docName, parentName) => {
@@ -237,10 +223,6 @@ export default function EditRequest() {
       }
     }
 
-    if (!paymentMethod) {
-      return "Please choose a payment method.";
-    }
-
     return "";
   };
 
@@ -267,7 +249,6 @@ export default function EditRequest() {
       }
 
       const oldFormData = request?.form_data || {};
-      const databasePaymentMethod = normalizePaymentForDatabase(paymentMethod);
 
       const updatedFormData = {
         ...oldFormData,
@@ -275,14 +256,13 @@ export default function EditRequest() {
         parent_document: selectedDoc.parentTitle || oldFormData.parent_document || null,
         category: selectedDoc.category || oldFormData.category || null,
         fields: formData,
-        payment_method: paymentMethod,
-        payment_method_for_database: databasePaymentMethod,
+        payment_edit_locked: true,
+        payment_edit_lock_note:
+          "Payment details are locked after request submission. Citizen edits are limited to request form fields and requirement attachment only.",
       };
 
       const payload = new FormData();
       payload.append("form_data", JSON.stringify(updatedFormData));
-      payload.append("payment_method", databasePaymentMethod);
-      payload.append("payment_method_for_database", databasePaymentMethod);
 
       if (file) {
         payload.append("uploaded_file", file);
@@ -541,31 +521,91 @@ export default function EditRequest() {
               </div>
 
               <div className="form-group">
-                <label>
-                  Type of Payment
-                  <span className="required-star"> *</span>
-                </label>
+                <label>Payment Information</label>
 
-                <div className="payment-options">
-                  {paymentOptions.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className={
-                        paymentMethod === option.value
-                          ? "payment-option active"
-                          : "payment-option"
-                      }
-                      onClick={() => {
-                        if (isEditable) setPaymentMethod(option.value);
+                <div
+                  style={{
+                    border: "1px solid #bfdbfe",
+                    borderRadius: "16px",
+                    padding: "1rem",
+                    background: "#eff6ff",
+                    display: "grid",
+                    gap: "0.65rem",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: "1rem",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div>
+                      <strong style={{ color: "#1f3c88" }}>Payment is locked</strong>
+                      <p className="selected-parent-note" style={{ marginTop: "4px" }}>
+                        Payment method cannot be changed after request submission.
+                        Only applicant details and requirement file are editable.
+                      </p>
+                    </div>
+
+                    <span
+                      style={{
+                        display: "inline-block",
+                        padding: "5px 14px",
+                        borderRadius: "999px",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        ...getPaymentStatusStyle(request.payment_status),
                       }}
-                      disabled={!isEditable}
-                      style={!isEditable ? { cursor: "not-allowed", opacity: 0.6 } : {}}
                     >
-                      <strong>{option.label}</strong>
-                      <span>{option.description}</span>
-                    </button>
-                  ))}
+                      {getDisplayValue(request.payment_status, "Unpaid")}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+                      gap: "0.75rem",
+                    }}
+                  >
+                    <div>
+                      <span className="selected-parent-note">Payment Method</span>
+                      <p style={{ fontWeight: 700, color: "#111827" }}>
+                        {getDisplayValue(paymentMethod)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <span className="selected-parent-note">Amount Due</span>
+                      <p style={{ fontWeight: 700, color: "#111827" }}>
+                        ₱{getDisplayValue(request.amount_due, "0.00")}
+                      </p>
+                    </div>
+
+                    <div>
+                      <span className="selected-parent-note">Reference Number</span>
+                      <p style={{ fontWeight: 700, color: "#111827" }}>
+                        {getDisplayValue(request.payment_reference)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {request.payment_proof_file_path && (
+                    <p className="selected-parent-note">
+                      Payment proof: {" "}
+                      <a
+                        href={getFileUrl(request.payment_proof_file_path)}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: "#1f3c88", fontWeight: 700 }}
+                      >
+                        View uploaded proof ↗
+                      </a>
+                    </p>
+                  )}
                 </div>
               </div>
 

@@ -824,38 +824,45 @@ export default function Admin() {
                 <h4>Actions</h4>
 
                 <div className="admin-actions">
-                  <select
-                    value={request.status || "Pending"}
-                    onChange={(e) => updateStatus(request.id, e.target.value)}
-                  >
-                    <option value="Pending">Pending</option>
-                    <option value="Processing">Processing</option>
-                    <option value="Needs More Info">Needs More Info</option>
-                    <option value="Approved">Approved</option>
-                    <option value="Ready for Pickup">Ready for Pickup</option>
-                    <option value="Completed">Completed</option>
-                    <option value="Rejected">Rejected</option>
-                  </select>
-
-                  {request.payment_status !== "Paid" &&
-                    request.payment_status !== "Waived" && (
-                      <button
-                        type="button"
-                        className="admin-pay-btn"
-                        onClick={() => updatePayment(request, "Paid")}
+                  {!isSuperadmin && (
+                    <>
+                      <select
+                        value={request.status || "Pending"}
+                        onChange={(e) => updateStatus(request.id, e.target.value)}
                       >
-                        Mark Paid
-                      </button>
-                    )}
+                        <option value="Pending">Pending</option>
+                        <option value="Processing">Processing</option>
+                        <option value="Needs More Info">Needs More Info</option>
+                        <option value="Approved">Approved</option>
+                        <option value="Ready for Pickup">Ready for Pickup</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Rejected">Rejected</option>
+                      </select>
+
+                      {request.payment_status !== "Paid" &&
+                        request.payment_status !== "Waived" && (
+                          <button
+                            type="button"
+                            className="admin-pay-btn"
+                            onClick={() => updatePayment(request, "Paid")}
+                          >
+                            Mark Paid
+                          </button>
+                        )}
+                    </>
+                  )}
 
                   {isSuperadmin && (
-                    <button
-                      type="button"
-                      className="admin-pay-btn danger"
-                      onClick={() => deleteRequest(request.id)}
-                    >
-                      Delete Request
-                    </button>
+                    <>
+                      <p className="admin-small-text">Request editing is locked for superadmin.</p>
+                      <button
+                        type="button"
+                        className="admin-pay-btn danger"
+                        onClick={() => deleteRequest(request.id)}
+                      >
+                        Delete Request
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -923,42 +930,37 @@ export default function Admin() {
 
                 <td>
                   <div className="admin-actions">
-                    <select
-                      value={request.status || "Pending"}
-                      onChange={(e) => updateStatus(request.id, e.target.value)}
-                    >
-                      <option value="Pending">Pending</option>
-                      <option value="Processing">Processing</option>
-                      <option value="Needs More Info">Needs More Info</option>
-                      <option value="Approved">Approved</option>
-                      <option value="Ready for Pickup">Ready for Pickup</option>
-                      <option value="Completed">Completed</option>
-                      <option value="Rejected">Rejected</option>
-                    </select>
-
-                    {request.payment_status !== "Paid" &&
-                      request.payment_status !== "Waived" && (
-                        <button
-                          type="button"
-                          className="admin-pay-btn"
-                          onClick={() => updatePayment(request, "Paid")}
+                    {!isSuperadmin && (
+                      <>
+                        <select
+                          value={request.status || "Pending"}
+                          onChange={(e) => updateStatus(request.id, e.target.value)}
                         >
-                          Mark Paid
-                        </button>
-                      )}
+                          <option value="Pending">Pending</option>
+                          <option value="Processing">Processing</option>
+                          <option value="Needs More Info">Needs More Info</option>
+                          <option value="Approved">Approved</option>
+                          <option value="Ready for Pickup">Ready for Pickup</option>
+                          <option value="Completed">Completed</option>
+                          <option value="Rejected">Rejected</option>
+                        </select>
+
+                        {request.payment_status !== "Paid" &&
+                          request.payment_status !== "Waived" && (
+                            <button
+                              type="button"
+                              className="admin-pay-btn"
+                              onClick={() => updatePayment(request, "Paid")}
+                            >
+                              Mark Paid
+                            </button>
+                          )}
+                      </>
+                    )}
 
                     {isSuperadmin && (
                       <>
-                        <button
-                          type="button"
-                          className="admin-pay-btn"
-                          onClick={() =>
-                            navigate(`/superadmin/requests/${request.id}/edit`)
-                          }
-                        >
-                          Edit Data Only
-                        </button>
-
+                        <p className="admin-small-text">Request editing is locked for superadmin.</p>
                         <button
                           type="button"
                           className="admin-pay-btn danger"

@@ -102,6 +102,64 @@ const cleanPaymentMethod = (method) => {
   return allowedPaymentMethods.includes(normalized) ? normalized : "Other";
 };
 
+const paymentMethodToUiLabel = (method) => {
+  const cleanedMethod = cleanPaymentMethod(method);
+
+  if (cleanedMethod === "Cash") return "Onsite Payment";
+  if (cleanedMethod === "None") return "";
+
+  return cleanedMethod;
+};
+
+const getLockedPaymentSnapshot = (existingRequest, oldFormData = {}, oldNotes = {}) => {
+  const databasePaymentMethod = cleanPaymentMethod(existingRequest.payment_method);
+  const uiPaymentMethod = paymentMethodToUiLabel(databasePaymentMethod);
+
+  return {
+    payment_status: existingRequest.payment_status,
+    payment_method: uiPaymentMethod,
+    payment_method_for_database: databasePaymentMethod,
+    payment_reference: existingRequest.payment_reference || null,
+    payment_reference_number:
+      existingRequest.payment_reference ||
+      oldFormData.payment_reference_number ||
+      oldNotes.payment_reference_number ||
+      null,
+    receipt_number: existingRequest.receipt_number || oldFormData.receipt_number || oldNotes.receipt_number || null,
+    payment_proof_path: existingRequest.payment_proof_path || null,
+    payment_proof_file: existingRequest.payment_proof_path
+      ? oldFormData.payment_proof_file || oldNotes.payment_proof_file || null
+      : null,
+    payment_note: oldFormData.payment_note || oldNotes.payment_note || null,
+    payment_account_name: oldFormData.payment_account_name || oldNotes.payment_account_name || null,
+    payment_account_number: oldFormData.payment_account_number || oldNotes.payment_account_number || null,
+    document_fee: existingRequest.document_fee ?? oldFormData.document_fee ?? oldNotes.document_fee ?? null,
+    document_fee_display: oldFormData.document_fee_display || oldNotes.document_fee_display || null,
+    system_fee: existingRequest.system_fee ?? oldFormData.system_fee ?? oldNotes.system_fee ?? null,
+    discount_amount: existingRequest.discount_amount ?? oldFormData.discount_amount ?? oldNotes.discount_amount ?? null,
+    total_amount: existingRequest.total_amount ?? oldFormData.total_amount ?? oldNotes.total_amount ?? null,
+    total_amount_display: oldFormData.total_amount_display || oldNotes.total_amount_display || null,
+    amount_due: existingRequest.amount_due ?? oldFormData.amount_due ?? oldNotes.amount_due ?? null,
+    official_receipt_status: oldFormData.official_receipt_status || oldNotes.official_receipt_status || null,
+    payment_status_note: oldFormData.payment_status_note || oldNotes.payment_status_note || null,
+    backend_fee_source: oldFormData.backend_fee_source || oldNotes.backend_fee_source || null,
+    security_note: oldFormData.security_note || oldNotes.security_note || null,
+    transaction_number: oldFormData.transaction_number || oldNotes.transaction_number || null,
+  };
+};
+
+const mergeDefinedValues = (...objects) => {
+  return objects.reduce((merged, current) => {
+    Object.entries(current || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        merged[key] = value;
+      }
+    });
+
+    return merged;
+  }, {});
+};
+
 const toNumber = (value, fallback = 0) => {
   if (value === undefined || value === null || value === "") return fallback;
 
@@ -644,6 +702,18 @@ const validateSeniorPromoApplication = async ({
     totalAfterDiscount,
     seniorEligibility,
   };
+};
+
+
+const blockSuperadminRequestMutation = (req, res) => {
+  if (req.user?.role !== "superadmin") return false;
+
+  res.status(403).json({
+    message:
+      "Superadmin access is read-only for request records. Superadmin can delete/remove requests only, while request editing must be done by admin accounts.",
+  });
+
+  return true;
 };
 
 const createNotification = async (userId, requestId, title, message) => {
@@ -1432,6 +1502,123 @@ exports.getAllRequests = async (req, res) => {
   }
 };
 
+exports.cancelRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const requestRows = await query(
+      `SELECT
+          r.*,
+          dt.name AS document_name,
+          (
+            SELECT file_path FROM uploads
+            WHERE request_id = r.id AND upload_type = 'payment_proof'
+            ORDER BY id DESC LIMIT 1
+          ) AS latest_payment_proof_path,
+          (
+            SELECT file_path FROM uploads
+            WHERE request_id = r.id AND upload_type = 'released_document'
+            ORDER BY id DESC LIMIT 1
+          ) AS latest_released_document_path
+       FROM requests r
+       LEFT JOIN document_types dt ON r.document_type_id = dt.id
+       WHERE r.id = ? AND r.user_id = ?
+       LIMIT 1`,
+      [id, userId]
+    );
+
+    if (requestRows.length === 0) {
+      return res.status(404).json({
+        message: "Request not found or you are not the owner.",
+      });
+    }
+
+    const existing = requestRows[0];
+    const cancelableStatuses = ["Pending", "Needs More Info"];
+
+    if (!cancelableStatuses.includes(existing.status)) {
+      return res.status(403).json({
+        message: `You cannot cancel a request with status: ${existing.status}. Only Pending or Needs More Info requests can be cancelled by the citizen.`,
+      });
+    }
+
+    if (existing.payment_status !== "Unpaid") {
+      return res.status(403).json({
+        message:
+          "This request already has a paid or waived payment record. Please contact the admin instead of cancelling it.",
+      });
+    }
+
+    if (existing.receipt_number || existing.paid_at) {
+      return res.status(403).json({
+        message:
+          "This request already has an official payment or receipt record. Please contact the admin instead of cancelling it.",
+      });
+    }
+
+    if (existing.latest_released_document_path) {
+      return res.status(403).json({
+        message:
+          "This request already has a released document. Please contact the admin instead of cancelling it.",
+      });
+    }
+
+    const parsedFormData = safeJsonParse(existing.form_data);
+    const documentName =
+      existing.document_name ||
+      parsedFormData.document_name ||
+      parsedFormData.parent_document ||
+      "Document Request";
+
+    await query("DELETE FROM request_messages WHERE request_id = ?", [id]);
+    await query("DELETE FROM feedback WHERE request_id = ?", [id]);
+    await query("DELETE FROM receipts WHERE request_id = ?", [id]);
+    await query("DELETE FROM appointments WHERE request_id = ?", [id]);
+    await query("DELETE FROM notifications WHERE request_id = ?", [id]);
+    await query("DELETE FROM uploads WHERE request_id = ?", [id]);
+
+    const result = await query(
+      "DELETE FROM requests WHERE id = ? AND user_id = ?",
+      [id, userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        message: "Request not found.",
+      });
+    }
+
+    await createNotification(
+      userId,
+      null,
+      "Request Cancelled",
+      `Your ${documentName} request was cancelled. You may submit a new request with the correct payment option.`
+    );
+
+    const citizenName = await getCitizenName(userId);
+
+    await notifyAdmins(
+      null,
+      "Citizen Cancelled Request",
+      `${citizenName} cancelled a ${documentName} request before admin processing.`
+    );
+
+    return res.status(200).json({
+      message:
+        "Request cancelled successfully. You may now submit a new request with the correct payment option.",
+      cancelled_request_id: Number(id),
+    });
+  } catch (err) {
+    console.error("CANCEL REQUEST ERROR:", err);
+
+    return res.status(500).json({
+      message: "Database error",
+      error: err.message,
+    });
+  }
+};
+
 exports.updateRequest = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1461,6 +1648,7 @@ exports.updateRequest = async (req, res) => {
     }
 
     const oldFormData = safeJsonParse(existing.form_data);
+    const oldNotes = safeJsonParse(existing.notes);
     const incomingFormData = safeJsonParse(req.body.form_data);
 
     const oldFields =
@@ -1473,15 +1661,27 @@ exports.updateRequest = async (req, res) => {
         ? incomingFormData.fields
         : {};
 
-    const mergedFormData = {
-      ...oldFormData,
-      ...incomingFormData,
-      fields: {
-        ...oldFields,
-        ...incomingFields,
-      },
-      citizen_updated_at: new Date().toISOString(),
-    };
+    const lockedPaymentSnapshot = getLockedPaymentSnapshot(
+      existing,
+      oldFormData,
+      oldNotes
+    );
+
+    const mergedFormData = mergeDefinedValues(
+      oldFormData,
+      incomingFormData,
+      lockedPaymentSnapshot,
+      {
+        fields: {
+          ...oldFields,
+          ...incomingFields,
+        },
+        citizen_updated_at: new Date().toISOString(),
+        payment_edit_locked: true,
+        payment_edit_lock_note:
+          "Payment details are locked after request submission. Citizen edits are limited to request form fields and requirement attachment only.",
+      }
+    );
 
     const requestFormAgeValidation = validateRequestFormAgeFields(mergedFormData);
 
@@ -1501,23 +1701,22 @@ exports.updateRequest = async (req, res) => {
       mergedFormData.document_name = req.body.document_name;
     }
 
-    const canUpdatePaymentMethod = existing.payment_status === "Unpaid";
-
-    const finalPaymentMethod = canUpdatePaymentMethod
-      ? cleanPaymentMethod(
-          req.body.payment_method_for_database ||
-            incomingFormData.payment_method_for_database ||
-            req.body.payment_method ||
-            incomingFormData.payment_method ||
-            existing.payment_method
-        )
-      : existing.payment_method;
+    const finalPaymentMethod = cleanPaymentMethod(existing.payment_method);
 
     mergedFormData.payment_method_for_database = finalPaymentMethod;
-    mergedFormData.payment_method =
-      req.body.payment_method ||
-      incomingFormData.payment_method ||
-      finalPaymentMethod;
+    mergedFormData.payment_method = paymentMethodToUiLabel(finalPaymentMethod);
+    mergedFormData.payment_reference = existing.payment_reference || null;
+    mergedFormData.payment_reference_number =
+      oldFormData.payment_reference_number ||
+      oldNotes.payment_reference_number ||
+      existing.payment_reference ||
+      null;
+    mergedFormData.receipt_number = existing.receipt_number || null;
+    mergedFormData.payment_status = existing.payment_status;
+
+    Object.entries(lockedPaymentSnapshot).forEach(([key, value]) => {
+      mergedFormData[key] = value;
+    });
 
     const newFile =
       getFirstUploadedFile(req, "uploaded_file") ||
@@ -1540,23 +1739,20 @@ exports.updateRequest = async (req, res) => {
       mergedFormData.resubmitted_from_status = "Needs More Info";
     }
 
-    const finalNotes = safeJsonStringify({
-      ...safeJsonParse(existing.notes),
-      ...mergedFormData,
-    });
+    const finalNotes = safeJsonStringify(
+      mergeDefinedValues(oldNotes, mergedFormData, lockedPaymentSnapshot)
+    );
 
     const result = await query(
       `UPDATE requests
        SET status = ?,
            notes = ?,
-           form_data = ?,
-           payment_method = ?
+           form_data = ?
        WHERE id = ? AND user_id = ?`,
       [
         newStatus,
         finalNotes,
         safeJsonStringify(mergedFormData),
-        finalPaymentMethod,
         id,
         userId,
       ]
@@ -1630,6 +1826,8 @@ exports.updateRequest = async (req, res) => {
 
 exports.updateStatus = async (req, res) => {
   try {
+    if (blockSuperadminRequestMutation(req, res)) return;
+
     const { id } = req.params;
     const { status } = req.body;
 
@@ -1735,6 +1933,8 @@ exports.updateStatus = async (req, res) => {
 
 exports.updatePayment = async (req, res) => {
   try {
+    if (blockSuperadminRequestMutation(req, res)) return;
+
     const { id } = req.params;
 
     const {
@@ -1917,6 +2117,8 @@ exports.updatePayment = async (req, res) => {
 
 exports.setPickupAppointment = async (req, res) => {
   try {
+    if (blockSuperadminRequestMutation(req, res)) return;
+
     const { id } = req.params;
     const { pickup_date, pickup_time } = req.body;
 
@@ -2127,6 +2329,8 @@ exports.getAllAppointments = async (req, res) => {
 
 exports.uploadFile = async (req, res) => {
   try {
+    if (blockSuperadminRequestMutation(req, res)) return;
+
     const { id } = req.params;
 
     if (!req.file) {

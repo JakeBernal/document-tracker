@@ -18,6 +18,7 @@ router.post(
 
 router.get("/requests/my", verifyToken, requestController.getMyRequests);
 router.get("/requests/:id", verifyToken, requestController.getRequestById);
+router.delete("/requests/:id", verifyToken, requestController.cancelRequest);
 
 router.put(
   "/requests/:id",

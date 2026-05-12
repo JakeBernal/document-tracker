@@ -13,6 +13,7 @@ export default function UserDashboard() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
+  const [cancellingRequestId, setCancellingRequestId] = useState(null);
 
   const getStoredUser = () => {
     const storedUserRaw = localStorage.getItem("user");
@@ -477,8 +478,77 @@ export default function UserDashboard() {
     return requests.filter((request) => request.status === activeFilter);
   }, [requests, activeFilter]);
 
+  const canCancelRequest = (request) => {
+    const cancelableStatuses = ["Pending", "Needs More Info"];
+    const paymentStatus = request.payment_status || "Unpaid";
+
+    return (
+      cancelableStatuses.includes(request.status) &&
+      paymentStatus === "Unpaid" &&
+      !request.receipt_number &&
+      !request.paid_at &&
+      !getReleasedDocumentUrl(request)
+    );
+  };
+
   const handleEditRequest = (requestId) => {
     navigate(`/EditRequest/${requestId}`);
+  };
+
+  const handleCancelRequest = async (request) => {
+    if (!canCancelRequest(request)) {
+      alert(
+        "This request can no longer be cancelled. Please contact the admin for help."
+      );
+      return;
+    }
+
+    const documentName = getDocumentName(request);
+    const confirmed = window.confirm(
+      `Cancel this ${documentName} request?\n\nUse this only if you selected the wrong payment option or submitted the wrong request. The cancelled request will be removed, and you can submit a new request with the correct payment option.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setCancellingRequestId(request.id);
+
+      const token = localStorage.getItem("token");
+
+      const res = await fetch(`${API_BASE_URL}/api/requests/${request.id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      let data = {};
+
+      try {
+        data = await res.json();
+      } catch (error) {
+        data = {};
+      }
+
+      if (!res.ok) {
+        alert(data.message || "Failed to cancel request.");
+        return;
+      }
+
+      alert(
+        data.message ||
+          "Request cancelled successfully. You may now submit a new request."
+      );
+
+      await fetchRequests();
+    } catch (error) {
+      console.error("CANCEL REQUEST ERROR:", error);
+      alert("Cannot connect to server. Please check your backend.");
+    } finally {
+      setCancellingRequestId(null);
+    }
   };
 
   return (
@@ -808,13 +878,28 @@ export default function UserDashboard() {
                             {["Pending", "Needs More Info"].includes(
                               request.status
                             ) ? (
-                              <button
-                                type="button"
-                                className="edit-btn"
-                                onClick={() => handleEditRequest(request.id)}
-                              >
-                                Edit Request
-                              </button>
+                              <div className="request-action-stack">
+                                <button
+                                  type="button"
+                                  className="edit-btn"
+                                  onClick={() => handleEditRequest(request.id)}
+                                >
+                                  Edit Request
+                                </button>
+
+                                {canCancelRequest(request) && (
+                                  <button
+                                    type="button"
+                                    className="cancel-request-btn"
+                                    onClick={() => handleCancelRequest(request)}
+                                    disabled={cancellingRequestId === request.id}
+                                  >
+                                    {cancellingRequestId === request.id
+                                      ? "Cancelling..."
+                                      : "Cancel Request"}
+                                  </button>
+                                )}
+                              </div>
                             ) : (
                               <span className="no-file-text">—</span>
                             )}

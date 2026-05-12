@@ -252,29 +252,8 @@ export default function SuperAdmin() {
     }
   };
 
-  const updateRequestQuick = async (requestId, payload, successMessage) => {
-    try {
-      const res = await fetch(`${API_BASE}/superadmin/requests/${requestId}`, {
-        method: "PUT",
-        headers: jsonHeaders,
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        showMessage(successMessage || data.message || "Request updated successfully.");
-        fetchRequests();
-        fetchStats(false);
-      } else {
-        showMessage(data.message || "Failed to update request.", "error");
-      }
-    } catch {
-      showMessage("Cannot connect to server.", "error");
-    }
-  };
-
   const handleDeleteRequest = async (requestId) => {
-    if (!window.confirm(`Delete request #${requestId}? This cannot be undone.`)) return;
+    if (!window.confirm(`Remove request #${requestId}? This cannot be undone.`)) return;
 
     try {
       const res = await fetch(`${API_BASE}/superadmin/requests/${requestId}`, {
@@ -284,7 +263,7 @@ export default function SuperAdmin() {
       const data = await res.json();
 
       if (res.ok) {
-        showMessage(data.message || "Request deleted successfully.");
+        showMessage(data.message || "Request removed successfully.");
         fetchRequests();
         fetchStats(false);
       } else {
@@ -666,7 +645,7 @@ export default function SuperAdmin() {
               <div className="sa-panel-header stackable">
                 <div>
                   <h2>Request Management ({filteredRequests.length})</h2>
-                  <p className="sa-muted">Monitor, update, edit, or delete document request records.</p>
+                  <p className="sa-muted">Monitor request records. Superadmin can remove records but cannot edit raw request data.</p>
                 </div>
                 <button type="button" className="sa-btn small" onClick={fetchRequests}>Refresh</button>
               </div>
@@ -731,26 +710,14 @@ export default function SuperAdmin() {
                             )}
                           </td>
                           <td>
-                            <select
-                              className={`sa-select status-select ${getStatusClass(request.status)}`}
-                              value={request.status || "Pending"}
-                              onChange={(e) => updateRequestQuick(request.id, { status: e.target.value }, "Request status updated successfully.")}
-                            >
-                              {requestStatuses.map((status) => (
-                                <option key={status} value={status}>{status}</option>
-                              ))}
-                            </select>
+                            <span className={`sa-badge ${getStatusClass(request.status)}`}>
+                              {request.status || "Pending"}
+                            </span>
                           </td>
                           <td>
-                            <select
-                              className="sa-select"
-                              value={request.payment_status || "Unpaid"}
-                              onChange={(e) => updateRequestQuick(request.id, { payment_status: e.target.value }, "Payment status updated successfully.")}
-                            >
-                              {paymentStatuses.map((status) => (
-                                <option key={status} value={status}>{status}</option>
-                              ))}
-                            </select>
+                            <span className={`sa-badge ${String(request.payment_status || "Unpaid").toLowerCase()}`}>
+                              {request.payment_status || "Unpaid"}
+                            </span>
                           </td>
                           <td>{formatAmount(request.total_amount)}</td>
                           <td>
@@ -761,15 +728,9 @@ export default function SuperAdmin() {
                             <div className="sa-action-group">
                               <button
                                 type="button"
-                                className="sa-btn small secondary"
-                                onClick={() => navigate(`/superadmin/requests/${request.id}/edit`)}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
                                 className="sa-btn danger small"
                                 onClick={() => handleDeleteRequest(request.id)}
+                                title="Remove this request record. Editing request data is locked for superadmin."
                               >
                                 Delete
                               </button>

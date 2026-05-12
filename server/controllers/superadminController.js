@@ -440,140 +440,15 @@ exports.getRequests = async (req, res) => {
   }
 };
 
-// ================= SUPERADMIN: REQUEST OVERRIDE =================
+// ================= SUPERADMIN: REQUEST RECORDS =================
+// Superadmin may view and remove request records only.
+// Editing raw request data is blocked here to protect citizen-submitted information,
+// payment records, uploaded files, and audit history.
 exports.updateRequestOverride = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const requestRows = await query("SELECT * FROM requests WHERE id = ? LIMIT 1", [id]);
-
-    if (requestRows.length === 0) {
-      return res.status(404).json({ message: "Request not found." });
-    }
-
-    const existing = requestRows[0];
-    const updates = [];
-    const params = [];
-
-    const addUpdate = (column, value) => {
-      if (value !== undefined) {
-        updates.push(`${column} = ?`);
-        params.push(value);
-      }
-    };
-
-    if (req.body.form_data !== undefined) {
-      const parsedFormData = safeJsonParse(req.body.form_data);
-      addUpdate("form_data", JSON.stringify(parsedFormData));
-      addUpdate("notes", req.body.notes !== undefined ? req.body.notes : JSON.stringify(parsedFormData));
-    } else if (req.body.notes !== undefined) {
-      addUpdate("notes", cleanNullable(req.body.notes));
-    }
-
-    if (req.body.document_type_id !== undefined) {
-      addUpdate("document_type_id", cleanNullable(req.body.document_type_id));
-    }
-
-    if (req.body.status !== undefined) {
-      if (!allowedStatuses.includes(req.body.status)) {
-        return res.status(400).json({ message: "Invalid status value." });
-      }
-
-      addUpdate("status", req.body.status);
-    }
-
-    if (req.body.payment_status !== undefined) {
-      if (!allowedPaymentStatuses.includes(req.body.payment_status)) {
-        return res.status(400).json({ message: "Invalid payment status." });
-      }
-
-      addUpdate("payment_status", req.body.payment_status);
-      addUpdate("paid_at", req.body.payment_status === "Paid" ? new Date() : null);
-    }
-
-    if (req.body.payment_method !== undefined) {
-      const paymentMethod = allowedPaymentMethods.includes(req.body.payment_method)
-        ? req.body.payment_method
-        : "Other";
-
-      addUpdate("payment_method", paymentMethod);
-    }
-
-    if (req.body.payment_reference !== undefined) {
-      addUpdate("payment_reference", cleanNullable(req.body.payment_reference));
-    }
-
-    if (req.body.amount_due !== undefined) {
-      addUpdate("amount_due", cleanNumber(req.body.amount_due));
-    }
-
-    if (req.body.document_fee !== undefined) {
-      addUpdate("document_fee", cleanNumber(req.body.document_fee));
-    }
-
-    if (req.body.system_fee !== undefined) {
-      addUpdate("system_fee", cleanNumber(req.body.system_fee));
-    }
-
-    if (req.body.discount_amount !== undefined) {
-      addUpdate("discount_amount", cleanNumber(req.body.discount_amount));
-    }
-
-    if (req.body.total_amount !== undefined) {
-      addUpdate("total_amount", cleanNumber(req.body.total_amount));
-    }
-
-    if (updates.length > 0) {
-      params.push(id);
-
-      await query(
-        `UPDATE requests
-         SET ${updates.join(", ")}
-         WHERE id = ?`,
-        params
-      );
-    }
-
-    const updatedRows = await query("SELECT * FROM requests WHERE id = ? LIMIT 1", [id]);
-    const updated = updatedRows[0] || existing;
-
-    await query(
-      `UPDATE receipts
-       SET document_fee = ?,
-           system_fee = ?,
-           discount_amount = ?,
-           total_amount = ?,
-           payment_method = ?,
-           payment_reference = ?
-       WHERE request_id = ?`,
-      [
-        updated.document_fee || 0,
-        updated.system_fee || 0,
-        updated.discount_amount || 0,
-        updated.total_amount || 0,
-        updated.payment_method || "None",
-        updated.payment_reference || null,
-        id,
-      ]
-    );
-
-    await createNotification(
-      existing.user_id,
-      id,
-      "Request Data Updated by Superadmin",
-      "Your request data was reviewed and updated. Uploaded files were not changed."
-    );
-
-    return res.json({
-      message: "Request data updated successfully. Uploaded files remained read-only and unchanged.",
-    });
-  } catch (err) {
-    console.error("SUPERADMIN UPDATE REQUEST ERROR:", err);
-    return res.status(500).json({
-      message: "Database error.",
-      error: err.message,
-    });
-  }
+  return res.status(403).json({
+    message:
+      "Superadmin access is read-only for request data. Superadmin can delete/remove request records, but cannot edit raw request information, status, payment, fees, notes, or uploaded file data.",
+  });
 };
 
 exports.deleteRequestOverride = async (req, res) => {

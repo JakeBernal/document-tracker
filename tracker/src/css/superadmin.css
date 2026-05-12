@@ -453,3 +453,19 @@
     width: 100%;
   }
 }
+
+/* Superadmin request read-only badges */
+.sa-badge.unpaid {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.sa-badge.paid {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.sa-badge.waived {
+  background: #e0e7ff;
+  color: #3730a3;
+}

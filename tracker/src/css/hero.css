@@ -1,6 +1,9 @@
+/* HERO */
 .hero {
   text-align: center;
-  padding: 10vh 20px;
+
+  /* LESS TOP SPACE */
+  padding: 1vh 20px 6vh;
 
   font-family: 'IBM Plex Mono', monospace;
 
@@ -9,50 +12,66 @@
   justify-content: center;
   align-items: center;
 
-  min-height: 70vh;
+  position: relative;
+  overflow: hidden;
 
-  /* PREMIUM BACKGROUND */
- background:
-  linear-gradient(
-    rgba(248, 250, 255, 0.75),
-    rgba(248, 250, 255, 0.75)
-  ),
-  url("/bg.png");
+  background:
+    linear-gradient(
+      rgba(248, 250, 255, 0.75),
+      rgba(248, 250, 255, 0.75)
+    ),
+    url("/bg.png");
 
-background-size: 99%;
-background-position: center;
-background-repeat: no-repeat;
+  min-height: 100vh;
+
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 /* TITLE */
 .hero h1 {
   font-size: 70px;
-  margin-bottom: 3rem;
+
+  /* LESS SPACE UNDER TITLE */
+  margin-bottom: 1.5rem;
+
+  /* REMOVE TOP MARGIN */
+  margin-top: 0;
 
   color: #0f172a;
 
   letter-spacing: -2px;
-
   font-weight: 700;
+
+  line-height: 1.05;
 }
 
 /* DESCRIPTION */
 .hero p {
   font-weight: 400;
-
   color: #64748b;
 
   font-size: clamp(14px, 2vw, 18px);
 
-  margin-bottom: 2rem;
+  /* LESS SPACE UNDER DESCRIPTION */
+  margin-bottom: 1.5rem;
 
   line-height: 1.7;
+
+  max-width: 900px;
+}
+
+/* BUTTON CONTAINER */
+.hero-buttons {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 /* BUTTONS */
 .hero-buttons button {
-  margin: 17px;
-
   cursor: pointer;
 
   font-family:'Roboto', sans-serif;
@@ -70,7 +89,7 @@ background-repeat: no-repeat;
 
   border: none;
 
-  padding: 15px 20px;
+  padding: 15px 24px;
 
   border-radius: 8px;
 
@@ -100,7 +119,7 @@ background-repeat: no-repeat;
 
   backdrop-filter: blur(8px);
 
-  padding: 15px 20px;
+  padding: 15px 24px;
 
   border-radius: 8px;
 
@@ -116,4 +135,105 @@ background-repeat: no-repeat;
   color: white;
 
   transform: translateY(-2px);
+}
+
+/* ========================= */
+/* LARGE TABLETS */
+/* ========================= */
+
+@media (max-width: 1024px) {
+  .hero {
+    min-height: 90vh;
+    padding: 2rem 20px 5rem;
+  }
+
+  .hero h1 {
+    font-size: 56px;
+  }
+
+  .hero p {
+    max-width: 700px;
+  }
+}
+
+/* ========================= */
+/* TABLETS */
+/* ========================= */
+
+@media (max-width: 768px) {
+  .hero {
+    min-height: 85vh;
+
+    padding: 2rem 20px 4rem;
+  }
+
+  .hero h1 {
+    font-size: 46px;
+
+    letter-spacing: -1px;
+
+    margin-bottom: 1.2rem;
+  }
+
+  .hero p {
+    font-size: 16px;
+
+    line-height: 1.6;
+
+    max-width: 90%;
+
+    margin-bottom: 1.2rem;
+  }
+
+  .hero-buttons {
+    gap: 14px;
+  }
+
+  .hero-buttons button {
+    width: 220px;
+  }
+}
+
+/* ========================= */
+/* MOBILE */
+/* ========================= */
+
+@media (max-width: 480px) {
+  .hero {
+    min-height: 80vh;
+
+    padding: 1rem 16px 3rem;
+  }
+
+  .hero h1 {
+    font-size: 34px;
+
+    margin-bottom: 1rem;
+
+    line-height: 1.15;
+  }
+
+  .hero p {
+    font-size: 14px;
+
+    line-height: 1.6;
+
+    max-width: 100%;
+
+    margin-bottom: 1rem;
+  }
+
+  .hero-buttons {
+    flex-direction: column;
+    align-items: center;
+
+    width: 100%;
+  }
+
+  .hero-buttons button {
+    width: 100%;
+    max-width: 260px;
+
+    padding: 14px 18px;
+  }
 }

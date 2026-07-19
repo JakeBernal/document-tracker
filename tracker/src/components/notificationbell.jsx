@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import "../css/notificationBell.css";
+import "../css/notificationbell.css";
 
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
